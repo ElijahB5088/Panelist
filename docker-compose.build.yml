@@ -1,0 +1,4 @@
+services:
+  nextpanel-server:
+    build:
+      context: ./server
