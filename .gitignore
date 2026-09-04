@@ -1,7 +1,11 @@
 .env
+.idea/
 __pycache__/
 *.pyc
 server/data/
 .gradle/
 build/
 local.properties
+android/keystore.properties
+android/*.jks
+android/*.keystore
