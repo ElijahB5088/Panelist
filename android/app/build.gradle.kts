@@ -36,15 +36,19 @@ android {
         versionName = configuredVersionName
     }
 
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
         }
     }
 
-    buildFeatures {
-        compose = true
-    }
+    val configuredBaseUrl = providers.gradleProperty("nextPanelBaseUrl").orNull ?: "http://10.0.2.2:8080/"
+    defaultConfig.buildConfigField("String", "NEXTPANEL_BASE_URL", "\"$configuredBaseUrl\"")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

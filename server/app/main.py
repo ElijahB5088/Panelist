@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import sqlite3
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
+from .config import settings
+from .metadata_service import MetadataRateLimitError, MetadataSearchService
+from .providers.metadata import AniListProvider, ComicVineProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider
 from .recommendation import build_recommendations
 from .security import (
@@ -20,6 +23,19 @@ from .security import (
 conn = get_conn()
 run_migrations(conn)
 provider = FloppyProvider()
+metadata_providers = [
+    ComicVineProvider(settings.comicvine_api_key, settings.metadata_user_agent),
+    OpenLibraryProvider(settings.metadata_user_agent),
+    AniListProvider(),
+]
+metadata_service = MetadataSearchService(
+    metadata_providers,
+    cache_ttl_seconds=settings.metadata_cache_ttl_seconds,
+    cache_max_entries=settings.metadata_cache_max_entries,
+    upstream_interval_seconds=settings.metadata_upstream_interval_seconds,
+    client_window_seconds=settings.metadata_client_window_seconds,
+    client_max_requests=settings.metadata_client_max_requests,
+)
 
 
 @asynccontextmanager
@@ -322,6 +338,35 @@ def media_by_id(media_id: str, user=Depends(user_from_auth)):
 @app.get("/api/search")
 def search(q: str):
     return media_list(query=q)
+
+
+@app.get("/api/metadata/search")
+async def metadata_search(request: Request, q: str, limit: int = 10):
+    if not q.strip():
+        return []
+    if limit < 1 or limit > 50:
+        raise HTTPException(400, "limit must be between 1 and 50")
+    try:
+        metadata_service.check_client_limit(request.client.host if request.client else "unknown")
+    except MetadataRateLimitError as exc:
+        raise HTTPException(429, "Metadata search rate limit exceeded") from exc
+    results = await metadata_service.search(q.strip(), limit=limit)
+    return [
+        {
+            "source": result.source,
+            "source_id": result.source_id,
+            "title": result.title,
+            "creator": result.creator,
+            "genres": result.genres or [],
+            "publisher": result.publisher,
+            "description": result.description,
+            "rating": result.rating,
+            "release_date": result.release_date,
+            "image_url": result.image_url,
+            "source_url": result.source_url,
+        }
+        for result in results
+    ]
 
 
 @app.get("/api/recommendations")

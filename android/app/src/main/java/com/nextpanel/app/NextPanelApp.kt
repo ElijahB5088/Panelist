@@ -6,6 +6,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,6 +17,8 @@ import com.nextpanel.app.ui.screens.HomeScreen
 import com.nextpanel.app.ui.screens.LibraryScreen
 import com.nextpanel.app.ui.screens.ProfileScreen
 import com.nextpanel.app.ui.theme.PanelistTheme
+import com.nextpanel.app.data.api.ApiFactory
+import com.nextpanel.app.data.repository.MetadataRepository
 
 private data class Tab(val route: String, val label: String, val icon: String)
 
@@ -29,6 +32,7 @@ private val tabs = listOf(
 @Composable
 fun NextPanelApp() {
     val nav = rememberNavController()
+    val metadataRepository = remember { MetadataRepository(ApiFactory.create()) }
     PanelistTheme {
         Scaffold(
             bottomBar = {
@@ -54,7 +58,7 @@ fun NextPanelApp() {
         ) { pad ->
             NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(pad)) {
                 composable("home") { HomeScreen() }
-                composable("discover") { DiscoverScreen() }
+                composable("discover") { DiscoverScreen(metadataRepository) }
                 composable("library") { LibraryScreen() }
                 composable("profile") { ProfileScreen() }
             }
