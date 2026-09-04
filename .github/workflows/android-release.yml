@@ -66,6 +66,13 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease -PversionName=${{ steps.version.outputs.version }} -PversionCode=${{ steps.version.outputs.version_code }}
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: panelist-${{ steps.version.outputs.version }}-${{ steps.version.outputs.version_code }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
