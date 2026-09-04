@@ -74,6 +74,15 @@ Configure these repository Actions secrets once, using the same keystore for eve
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
+To create the keystore on Windows, run this once from a private folder and choose strong passwords:
+
+```powershell
+keytool -genkeypair -v -keystore panelist-release.jks -alias panelist -keyalg RSA -keysize 2048 -validity 10000
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\panelist-release.jks")) | Set-Clipboard
+```
+
+Create the four secrets in the repository's **Settings > Secrets and variables > Actions**. Paste the clipboard contents into `ANDROID_KEYSTORE_BASE64`; use the same keystore password, alias (`panelist`), and key password entered above for the other three secrets. Keep `panelist-release.jks` and its passwords backed up securely, and never commit the keystore.
+
 The workflow uses the GitHub run number as `versionCode`, which increases for each build, and the tag as `versionName`. Do not replace the release keystore: Android only permits updates when the application ID and signing key remain the same.
 
 ## API
