@@ -1,4 +1,4 @@
-package com.nextpanel.app.ui.screens
+package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,8 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.nextpanel.app.data.model.MetadataResult
-import com.nextpanel.app.data.repository.MetadataRepository
+import com.panelist.app.data.model.MetadataResult
+import com.panelist.app.data.repository.MetadataRepository
 
 @Composable
 fun DiscoverScreen(repository: MetadataRepository? = null) {

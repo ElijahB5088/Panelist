@@ -1,4 +1,4 @@
-package com.nextpanel.app.data.model
+package com.panelist.app.data.model
 
 data class MetadataResult(
     val source: String,

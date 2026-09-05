@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NextPanel"
+rootProject.name = "Panelist"
 include(":app")

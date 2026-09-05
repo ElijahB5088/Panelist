@@ -18,6 +18,7 @@ def setup_db():
             ("saga", "Saga", "Brian K. Vaughan", "science-fiction,space-opera", 4.8),
             ("a", "A", "Brian K. Vaughan", "science-fiction", 4.1),
             ("b", "B", "Other", "romance", 4.9),
+            ("c", "C", "Other", "science-fiction", 4.0),
         ],
     )
     conn.execute("INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'saga', 'completed', 100, 5)")
@@ -40,3 +41,44 @@ def test_recommendations_respect_dismiss_feedback():
     conn.commit()
     recs = build_recommendations(conn, 1, 10)
     assert all(r.media_id != "a" for r in recs)
+
+
+def test_completed_unrated_items_seed_recommendations_and_normalize_genres():
+    conn = setup_db()
+    conn.execute("UPDATE user_library SET user_rating = NULL WHERE media_id = 'saga'")
+    conn.execute("UPDATE media SET genres = 'Science-Fiction' WHERE id = 'a'")
+    conn.commit()
+
+    recs = build_recommendations(conn, 1, 10)
+
+    assert "a" in [recommendation.media_id for recommendation in recs]
+
+
+def test_late_dropped_items_create_a_negative_genre_signal():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('d', 'D', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'd', 'dropped', 80, NULL)"
+    )
+    conn.commit()
+
+    recs = build_recommendations(conn, 1, 10)
+
+    assert "d" not in [recommendation.media_id for recommendation in recs]
+    assert "c" not in [recommendation.media_id for recommendation in recs]
+
+
+def test_liked_feedback_boosts_matching_items():
+    conn = setup_db()
+    conn.execute("UPDATE media SET genres = 'romance' WHERE id = 'b'")
+    conn.execute("UPDATE media SET genres = 'romance' WHERE id = 'c'")
+    conn.execute(
+        "INSERT INTO recommendation_feedback (user_id, media_id, feedback, created_at) VALUES (1, 'b', 'like', 'x')"
+    )
+    conn.commit()
+
+    recs = build_recommendations(conn, 1, 10)
+
+    assert recs[0].media_id == "b"

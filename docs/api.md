@@ -1,4 +1,4 @@
-# NextPanel API (MVP)
+# Panelist API (MVP)
 
 Implemented endpoints:
 

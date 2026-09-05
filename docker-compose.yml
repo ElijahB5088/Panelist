@@ -1,27 +1,27 @@
 services:
-  nextpanel-server:
+  panelist-server:
     image: ghcr.io/elijahb5088/panelist-server:latest
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///app/data/nextpanel.db}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///app/data/panelist.db}
     ports:
       - "8080:8080"
     volumes:
-      - nextpanel_data:/app/data
+      - panelist_data:/app/data
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
     profiles: ["postgres"]
     environment:
-      - POSTGRES_DB=nextpanel
-      - POSTGRES_USER=nextpanel
-      - POSTGRES_PASSWORD=nextpanel
+      - POSTGRES_DB=panelist
+      - POSTGRES_USER=panelist
+      - POSTGRES_PASSWORD=panelist
     volumes:
-      - nextpanel_pg:/var/lib/postgresql/data
+      - panelist_pg:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
-  nextpanel_data:
-  nextpanel_pg:
+  panelist_data:
+  panelist_pg:

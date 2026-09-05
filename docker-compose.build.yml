@@ -1,4 +1,4 @@
 services:
-  nextpanel-server:
+  panelist-server:
     build:
       context: ./server

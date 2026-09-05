@@ -1,0 +1,35 @@
+package com.panelist.app.data.api
+
+import com.panelist.app.data.model.Recommendation
+import com.panelist.app.data.model.MetadataResult
+import com.panelist.app.data.model.AuthResponse
+import com.panelist.app.data.model.Credentials
+import com.panelist.app.data.model.FeedbackResponse
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.Path
+import retrofit2.http.Query
+
+interface PanelistApi {
+    @POST("/api/auth/login")
+    suspend fun login(@Body credentials: Credentials): AuthResponse
+
+    @POST("/api/auth/register")
+    suspend fun register(@Body credentials: Credentials): FeedbackResponse
+
+    @GET("/api/recommendations")
+    suspend fun recommendations(@Query("limit") limit: Int = 20): List<Recommendation>
+
+    @POST("/api/recommendations/{mediaId}/like")
+    suspend fun like(@Path("mediaId") mediaId: String): FeedbackResponse
+
+    @POST("/api/recommendations/{mediaId}/dismiss")
+    suspend fun dismiss(@Path("mediaId") mediaId: String): FeedbackResponse
+
+    @GET("/api/metadata/search")
+    suspend fun metadataSearch(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 10
+    ): List<MetadataResult>
+}

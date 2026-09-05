@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.nextpanel.app"
+    namespace = "com.panelist.app"
     compileSdk = 35
 
     val keystoreProperties = Properties()
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.nextpanel.app"
+        applicationId = "com.panelist.app"
         minSdk = 28
         targetSdk = 35
         versionCode = configuredVersionCode
@@ -47,8 +47,8 @@ android {
         }
     }
 
-    val configuredBaseUrl = providers.gradleProperty("nextPanelBaseUrl").orNull ?: "http://10.0.2.2:8080/"
-    defaultConfig.buildConfigField("String", "NEXTPANEL_BASE_URL", "\"$configuredBaseUrl\"")
+    val configuredBaseUrl = providers.gradleProperty("panelistBaseUrl").orNull ?: "http://10.0.2.2:8080/"
+    defaultConfig.buildConfigField("String", "PANELIST_BASE_URL", "\"$configuredBaseUrl\"")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -70,4 +70,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

@@ -1,4 +1,4 @@
-package com.nextpanel.app.ui.screens
+package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
