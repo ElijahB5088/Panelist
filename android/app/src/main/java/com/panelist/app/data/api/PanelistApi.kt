@@ -5,6 +5,11 @@ import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.data.model.AuthResponse
 import com.panelist.app.data.model.Credentials
 import com.panelist.app.data.model.FeedbackResponse
+import com.panelist.app.data.model.FloppyConfig
+import com.panelist.app.data.model.FloppyConnectionResponse
+import com.panelist.app.data.model.LibraryItem
+import com.panelist.app.data.model.ProfileResponse
+import com.panelist.app.data.model.SyncStatus
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -32,4 +37,22 @@ interface PanelistApi {
         @Query("q") query: String,
         @Query("limit") limit: Int = 10
     ): List<MetadataResult>
+
+    @GET("/api/library")
+    suspend fun library(@Query("status") status: String? = null): List<LibraryItem>
+
+    @GET("/api/profile")
+    suspend fun profile(): ProfileResponse
+
+    @POST("/api/integrations/floppy/test")
+    suspend fun testFloppy(@Body config: FloppyConfig): FloppyConnectionResponse
+
+    @POST("/api/integrations/floppy")
+    suspend fun connectFloppy(@Body config: FloppyConfig): FloppyConnectionResponse
+
+    @POST("/api/sync")
+    suspend fun sync(): FeedbackResponse
+
+    @GET("/api/sync/status")
+    suspend fun syncStatus(): SyncStatus
 }

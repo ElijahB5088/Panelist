@@ -14,18 +14,31 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -33,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.panelist.app.data.model.Recommendation
 import com.panelist.app.data.repository.RecommendationRepository
 import com.panelist.app.viewmodel.HomeViewModel
+import com.panelist.app.ui.rememberReducedMotion
 import kotlin.math.roundToInt
 
 @Composable
@@ -40,6 +54,13 @@ fun HomeScreen(repository: RecommendationRepository) {
     val viewModel = remember { HomeViewModel(repository) }
     val state by viewModel.uiState.collectAsState()
     val pick = state.recommendations.getOrNull(state.currentIndex)
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val reducedMotion = rememberReducedMotion()
+    val animatedDragOffset by animateFloatAsState(
+        dragOffset,
+        animationSpec = if (reducedMotion) snap() else spring(),
+        label = "recommendation drag"
+    )
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
@@ -74,14 +95,32 @@ fun HomeScreen(repository: RecommendationRepository) {
                     DeckCard(
                         pick,
                         Modifier
+                            .semantics {
+                                customActions = listOf(
+                                    CustomAccessibilityAction("Like recommendation") {
+                                        viewModel.submitFeedback(true)
+                                        true
+                                    },
+                                    CustomAccessibilityAction("Dismiss recommendation") {
+                                        viewModel.submitFeedback(false)
+                                        true
+                                    }
+                                )
+                            }
                             .pointerInput(state.currentIndex) {
-                                var dragOffset = 0f
                                 detectHorizontalDragGestures(
                                     onHorizontalDrag = { _, amount -> dragOffset += amount },
                                     onDragEnd = {
-                                        if (kotlin.math.abs(dragOffset) > 180f) viewModel.submitFeedback(dragOffset > 0f)
+                                        if (kotlin.math.abs(dragOffset) > 180f) {
+                                            viewModel.submitFeedback(dragOffset > 0f)
+                                        }
+                                        dragOffset = 0f
                                     }
                                 )
+                            }
+                            .graphicsLayer {
+                                translationX = animatedDragOffset
+                                rotationZ = animatedDragOffset / 32f
                             }
                     )
                 }
@@ -90,9 +129,9 @@ fun HomeScreen(repository: RecommendationRepository) {
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ActionButton("X", "Dismiss", MaterialTheme.colorScheme.primary) { viewModel.submitFeedback(false) }
+                    ActionButton(Icons.Outlined.Close, "Dismiss", MaterialTheme.colorScheme.primary) { viewModel.submitFeedback(false) }
                     Spacer(Modifier.size(42.dp))
-                    ActionButton("+", "Like", MaterialTheme.colorScheme.tertiary) { viewModel.submitFeedback(true) }
+                    ActionButton(Icons.Outlined.FavoriteBorder, "Like", MaterialTheme.colorScheme.tertiary) { viewModel.submitFeedback(true) }
                 }
             }
         }
@@ -143,10 +182,10 @@ private fun ErrorDeck(message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun ActionButton(icon: String, label: String, color: Color, onClick: () -> Unit) {
+private fun ActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: Color, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick, modifier = Modifier.size(58.dp)) {
-            Text(icon, color = color, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.size(30.dp))
+            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(30.dp))
         }
         Text(label, style = MaterialTheme.typography.labelLarge)
     }

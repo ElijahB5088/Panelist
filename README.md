@@ -60,11 +60,11 @@ The Android module uses:
 ### Android releases
 
 Android releases are built by [`.github/workflows/android-release.yml`](.github/workflows/android-release.yml).
-Create a `vMAJOR.MINOR.PATCH` tag to build and publish a signed APK, for example:
+Create a tag with dot-separated numeric components to build and publish a signed APK, for example:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.5.1
+git push origin v0.1.5.1
 ```
 
 Configure these repository Actions secrets once, using the same keystore for every release:

@@ -3,6 +3,8 @@ package com.panelist.app.data.api
 import android.content.Context
 import com.panelist.app.BuildConfig
 import com.panelist.app.data.session.SessionStore
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -23,7 +25,11 @@ object ApiFactory {
         return Retrofit.Builder()
         .baseUrl(BuildConfig.PANELIST_BASE_URL)
             .client(OkHttpClient.Builder().addInterceptor(authInterceptor).build())
-        .addConverterFactory(MoshiConverterFactory.create())
+        .addConverterFactory(
+            MoshiConverterFactory.create(
+                Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            )
+        )
         .build()
         .create(PanelistApi::class.java)
     }

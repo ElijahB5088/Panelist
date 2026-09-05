@@ -1,9 +1,20 @@
 package com.panelist.app
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -20,19 +32,23 @@ import com.panelist.app.ui.screens.AuthScreen
 import com.panelist.app.ui.screens.HomeScreen
 import com.panelist.app.ui.screens.LibraryScreen
 import com.panelist.app.ui.screens.ProfileScreen
+import com.panelist.app.ui.screens.MetadataDetailScreen
+import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.ui.theme.PanelistTheme
 import com.panelist.app.data.api.ApiFactory
 import com.panelist.app.data.repository.MetadataRepository
 import com.panelist.app.data.repository.AuthRepository
 import com.panelist.app.data.repository.RecommendationRepository
+import com.panelist.app.data.repository.LibraryRepository
+import com.panelist.app.data.repository.ProfileRepository
 
-private data class Tab(val route: String, val label: String, val icon: String)
+private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 private val tabs = listOf(
-    Tab("home", "For you", "H"),
-    Tab("discover", "Discover", "D"),
-    Tab("library", "Library", "L"),
-    Tab("profile", "Profile", "P")
+    Tab("home", "For you", Icons.Outlined.Home),
+    Tab("discover", "Discover", Icons.Outlined.Search),
+    Tab("library", "Library", Icons.Outlined.FavoriteBorder),
+    Tab("profile", "Profile", Icons.Outlined.Person)
 )
 
 @Composable
@@ -44,40 +60,75 @@ fun PanelistApp() {
     val authRepository = remember { AuthRepository(api, sessionStore) }
     val metadataRepository = remember { MetadataRepository(api) }
     var isAuthenticated by remember { mutableStateOf(authRepository.isAuthenticated()) }
+    var selectedMetadata by remember { mutableStateOf<MetadataResult?>(null) }
     PanelistTheme {
         if (!isAuthenticated) {
             AuthScreen(authRepository) { isAuthenticated = true }
             return@PanelistTheme
         }
         val recommendationRepository = remember { RecommendationRepository(api) }
-        Scaffold(
-            bottomBar = {
+        val libraryRepository = remember { LibraryRepository(api) }
+        val profileRepository = remember { ProfileRepository(api) }
+        val useRail = LocalConfiguration.current.screenWidthDp >= 600
+        Row {
+            if (useRail) {
                 val entry by nav.currentBackStackEntryAsState()
                 val route = entry?.destination?.route ?: "home"
-                NavigationBar {
+                NavigationRail {
                     tabs.forEach { tab ->
-                        NavigationBarItem(
+                        NavigationRailItem(
                             selected = tab.route == route,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { androidx.compose.material3.Text(tab.icon, style = androidx.compose.material3.MaterialTheme.typography.labelLarge) },
-                            label = { androidx.compose.material3.Text(tab.label) }
+                            onClick = { navigateToTab(nav, tab.route) },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) }
                         )
                     }
                 }
             }
-        ) { pad ->
-            NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(pad)) {
-                composable("home") { HomeScreen(recommendationRepository) }
-                composable("discover") { DiscoverScreen(metadataRepository) }
-                composable("library") { LibraryScreen() }
-                composable("profile") { ProfileScreen() }
+            Scaffold(
+                modifier = Modifier.weight(1f),
+                bottomBar = {
+                    if (!useRail) {
+                    val entry by nav.currentBackStackEntryAsState()
+                    val route = entry?.destination?.route ?: "home"
+                    NavigationBar {
+                        tabs.forEach { tab ->
+                            NavigationBarItem(
+                                selected = tab.route == route,
+                                onClick = { navigateToTab(nav, tab.route) },
+                                icon = { Icon(tab.icon, contentDescription = tab.label) },
+                                label = { Text(tab.label) }
+                            )
+                        }
+                    }
+                    }
+                }
+            ) { pad ->
+                NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+                    composable("home") { HomeScreen(recommendationRepository) }
+                    composable("discover") {
+                        DiscoverScreen(metadataRepository) { result ->
+                            selectedMetadata = result
+                            nav.navigate("metadata-detail")
+                        }
+                    }
+                    composable("metadata-detail") {
+                        selectedMetadata?.let { result ->
+                            MetadataDetailScreen(result) { nav.popBackStack() }
+                        }
+                    }
+                    composable("library") { LibraryScreen(libraryRepository) }
+                    composable("profile") { ProfileScreen(profileRepository) }
+                }
             }
         }
+    }
+}
+
+private fun navigateToTab(nav: androidx.navigation.NavHostController, route: String) {
+    nav.navigate(route) {
+        popUpTo("home") { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }

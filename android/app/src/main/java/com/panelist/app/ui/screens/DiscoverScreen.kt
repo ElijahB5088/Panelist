@@ -1,6 +1,7 @@
 package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,11 +29,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.SubcomposeAsyncImage
+import kotlinx.coroutines.delay
 import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.data.repository.MetadataRepository
 
 @Composable
-fun DiscoverScreen(repository: MetadataRepository? = null) {
+fun DiscoverScreen(
+    repository: MetadataRepository? = null,
+    onOpenDetail: (MetadataResult) -> Unit = {}
+) {
     var query by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf("All") }
     var results by remember { mutableStateOf(demoMetadata) }
@@ -38,6 +47,7 @@ fun DiscoverScreen(repository: MetadataRepository? = null) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query, repository) {
+        delay(350)
         if (query.trim().length < 2 || repository == null) {
             results = demoMetadata
             isLoading = false
@@ -69,9 +79,16 @@ fun DiscoverScreen(repository: MetadataRepository? = null) {
             label = { Text("Search titles or creators") },
             singleLine = true
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             listOf("All", "comicvine", "openlibrary", "anilist").forEach { source ->
-                FilterChip(selected = selectedSource == source, onClick = { selectedSource = source }, label = { Text(source) })
+                FilterChip(
+                    selected = selectedSource == source,
+                    onClick = { selectedSource = source },
+                    label = { Text(source) }
+                )
             }
         }
         when {
@@ -85,24 +102,31 @@ fun DiscoverScreen(repository: MetadataRepository? = null) {
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(filteredResults, key = { "${it.source}:${it.source_id}" }) { result -> MetadataCard(result) }
+                items(filteredResults, key = { "${it.source}:${it.source_id}" }) { result ->
+                    MetadataCard(result, onClick = { onOpenDetail(result) })
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MetadataCard(result: MetadataResult) {
-    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+private fun MetadataCard(result: MetadataResult, onClick: () -> Unit) {
+    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp, modifier = Modifier.clickable(onClick = onClick)) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
             val accent = when (result.source) {
                 "comicvine" -> Color(0xFFB94632)
                 "anilist" -> Color(0xFF415E55)
                 else -> Color(0xFF3D5875)
             }
-            Column(modifier = Modifier.size(width = 82.dp, height = 116.dp).background(accent, RoundedCornerShape(12.dp)), verticalArrangement = Arrangement.SpaceBetween) {
-                Text(result.title.take(1).uppercase(), modifier = Modifier.padding(12.dp), color = Color.White, style = MaterialTheme.typography.headlineLarge)
-                Text(result.source, modifier = Modifier.padding(8.dp), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge)
+            Surface(shape = RoundedCornerShape(12.dp), color = accent, modifier = Modifier.size(width = 82.dp, height = 116.dp)) {
+                SubcomposeAsyncImage(
+                    model = result.image_url,
+                    contentDescription = "Cover for ${result.title}",
+                    contentScale = ContentScale.Crop,
+                    loading = { CoverFallback(result, accent) },
+                    error = { CoverFallback(result, accent) }
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(result.title, style = MaterialTheme.typography.titleMedium)
@@ -113,6 +137,17 @@ private fun MetadataCard(result: MetadataResult) {
                 result.description?.let { Text(it.replace(Regex("<[^>]*>"), "").take(120), style = MaterialTheme.typography.bodyLarge, maxLines = 2) }
             }
         }
+    }
+}
+
+@Composable
+private fun CoverFallback(result: MetadataResult, accent: Color) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(accent),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(result.title.take(1).uppercase(), modifier = Modifier.padding(12.dp), color = Color.White, style = MaterialTheme.typography.headlineLarge)
+        Text(result.source, modifier = Modifier.padding(8.dp), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge)
     }
 }
 
