@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections import OrderedDict, defaultdict, deque
 
 from .metadata import MetadataResult
 from .providers.metadata import MetadataProvider
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataRateLimitError(Exception):
@@ -59,6 +62,7 @@ class MetadataSearchService:
                 await self._wait_for_upstream(provider.name)
                 results.extend(await provider.search(normalized_query, limit=limit))
             except Exception:
+                logger.warning("Metadata provider %s failed for query %r", provider.name, normalized_query, exc_info=True)
                 continue
         self._cache[cache_key] = (time.monotonic(), results)
         self._cache.move_to_end(cache_key)

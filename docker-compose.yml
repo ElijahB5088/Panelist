@@ -1,6 +1,8 @@
 services:
   panelist-server:
     image: ghcr.io/elijahb5088/panelist-server:latest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:

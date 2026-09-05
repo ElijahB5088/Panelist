@@ -46,6 +46,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 - Floppy token is encrypted at rest on the Panelist server
 - Recommendation engine is local, content-based, and explainable
 - App never talks directly to Floppy with user token
+- The Panelist server makes the Floppy request. If Floppy is running on the
+  Docker host, use `http://host.docker.internal:<port>` as its URL; `localhost`
+  inside the app refers to the Panelist container, not the host machine.
 
 ## Android app notes
 

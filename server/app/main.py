@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import httpx
 import sqlite3
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -147,7 +148,10 @@ def profile(user=Depends(user_from_auth)):
 
 @app.post("/api/integrations/floppy/test")
 async def test_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
-    ok = await provider.test_connection(body.server_url, body.api_token)
+    try:
+        ok = await provider.test_connection(body.server_url, body.api_token)
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Could not reach Floppy at {body.server_url}: {exc}") from exc
     return {"connected": ok, "server_url": body.server_url}
 
 

@@ -11,7 +11,7 @@ class FloppyProvider(TrackingProvider):
         headers = {"Authorization": "Bearer " + api_token}
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(f"{server_url.rstrip('/')}/api/me", headers=headers)
-        return resp.status_code < 300
+        return resp.is_success
 
     async def fetch_library(self, server_url: str, api_token: str) -> list[dict]:
         headers = {"Authorization": "Bearer " + api_token}
