@@ -57,6 +57,11 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Panelist Server", version="0.1.0", lifespan=lifespan)
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 class Credentials(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=6)

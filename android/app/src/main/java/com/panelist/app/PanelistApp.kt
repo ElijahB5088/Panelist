@@ -33,6 +33,7 @@ import com.panelist.app.ui.screens.HomeScreen
 import com.panelist.app.ui.screens.LibraryScreen
 import com.panelist.app.ui.screens.ProfileScreen
 import com.panelist.app.ui.screens.MetadataDetailScreen
+import com.panelist.app.ui.screens.ServerConnectionScreen
 import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.ui.theme.PanelistTheme
 import com.panelist.app.data.api.ApiFactory
@@ -56,12 +57,23 @@ fun PanelistApp() {
     val nav = rememberNavController()
     val context = LocalContext.current
     val sessionStore = remember { com.panelist.app.data.session.SessionStore(context) }
-    val api = remember { ApiFactory.create(context, sessionStore) }
-    val authRepository = remember { AuthRepository(api, sessionStore) }
-    val metadataRepository = remember { MetadataRepository(api) }
-    var isAuthenticated by remember { mutableStateOf(authRepository.isAuthenticated()) }
+    var serverUrl by remember { mutableStateOf(sessionStore.serverUrl()) }
     var selectedMetadata by remember { mutableStateOf<MetadataResult?>(null) }
     PanelistTheme {
+        if (serverUrl == null) {
+            ServerConnectionScreen(
+                onConnected = { connectedUrl ->
+                    sessionStore.saveServerUrl(connectedUrl)
+                    serverUrl = connectedUrl
+                },
+                testConnection = { url -> ApiFactory.create(sessionStore, url).health() }
+            )
+            return@PanelistTheme
+        }
+        val api = remember(serverUrl) { ApiFactory.create(sessionStore, serverUrl!!) }
+        val authRepository = remember(api) { AuthRepository(api, sessionStore) }
+        val metadataRepository = remember(api) { MetadataRepository(api) }
+        var isAuthenticated by remember(serverUrl) { mutableStateOf(authRepository.isAuthenticated()) }
         if (!isAuthenticated) {
             AuthScreen(authRepository) { isAuthenticated = true }
             return@PanelistTheme

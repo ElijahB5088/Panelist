@@ -34,6 +34,7 @@ android {
         targetSdk = 35
         versionCode = configuredVersionCode
         versionName = configuredVersionName
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
     buildFeatures {
@@ -42,6 +43,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
         }

@@ -16,7 +16,12 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
+data class HealthResponse(val status: String)
+
 interface PanelistApi {
+    @GET("/health")
+    suspend fun health(): HealthResponse
+
     @POST("/api/auth/login")
     suspend fun login(@Body credentials: Credentials): AuthResponse
 

@@ -1,7 +1,5 @@
 package com.panelist.app.data.api
 
-import android.content.Context
-import com.panelist.app.BuildConfig
 import com.panelist.app.data.session.SessionStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -11,7 +9,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 object ApiFactory {
-    fun create(context: Context, sessionStore: SessionStore): PanelistApi {
+    fun create(sessionStore: SessionStore, baseUrl: String): PanelistApi {
         val authInterceptor = Interceptor { chain ->
             val token = sessionStore.token()
             val request = chain.request().newBuilder().apply {
@@ -23,7 +21,7 @@ object ApiFactory {
         }
 
         return Retrofit.Builder()
-        .baseUrl(BuildConfig.PANELIST_BASE_URL)
+        .baseUrl(baseUrl)
             .client(OkHttpClient.Builder().addInterceptor(authInterceptor).build())
         .addConverterFactory(
             MoshiConverterFactory.create(

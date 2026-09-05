@@ -7,6 +7,12 @@ class SessionStore(context: Context) {
 
     fun token(): String? = preferences.getString(KEY_TOKEN, null)
 
+    fun serverUrl(): String? = preferences.getString(KEY_SERVER_URL, null)
+
+    fun saveServerUrl(url: String) {
+        preferences.edit().putString(KEY_SERVER_URL, url).apply()
+    }
+
     fun saveToken(token: String) {
         preferences.edit().putString(KEY_TOKEN, token).apply()
     }
@@ -17,5 +23,6 @@ class SessionStore(context: Context) {
 
     companion object {
         private const val KEY_TOKEN = "access_token"
+        private const val KEY_SERVER_URL = "server_url"
     }
 }

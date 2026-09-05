@@ -3,6 +3,7 @@
     <application
         android:allowBackup="true"
         android:label="Panelist"
+        android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
