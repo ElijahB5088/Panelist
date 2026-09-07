@@ -12,11 +12,11 @@ def test_floppy_normalization():
     provider = FloppyProvider()
     payload = [
         {
-            "status": "reading",
+            "status": 1,
             "progress": 42,
             "rating": 5,
-            "media": {
-                "id": "x1",
+            "media_id": "x1",
+            "item": {
                 "title": "X",
                 "creator": "C",
                 "genres": ["sci-fi"],
@@ -28,3 +28,15 @@ def test_floppy_normalization():
     assert media.id == "x1"
     assert media.genres == ["sci-fi"]
     assert lib["status"] == "reading"
+
+
+def test_floppy_envelope_and_statuses():
+    provider = FloppyProvider()
+
+    assert provider.fetch_library
+    normalized = provider.normalize_library([
+        {"media_id": "x2", "status": 2, "progress": 100, "item": {"title": "Done"}},
+        {"media_id": "x3", "status": 5, "progress": 0, "item": {"title": "Queued"}},
+    ])
+
+    assert [library["status"] for _, library in normalized] == ["completed", "planned"]

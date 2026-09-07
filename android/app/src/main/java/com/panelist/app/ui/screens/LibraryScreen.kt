@@ -27,7 +27,7 @@ import com.panelist.app.data.repository.LibraryRepository
 
 @Composable
 fun LibraryScreen(repository: LibraryRepository? = null) {
-    val statuses = listOf("reading", "completed", "planned", "dropped", "rated")
+    val statuses = listOf("all", "reading", "completed", "planned", "dropped", "rated")
     var selectedStatus by remember { mutableStateOf(statuses.first()) }
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -37,7 +37,7 @@ fun LibraryScreen(repository: LibraryRepository? = null) {
         if (repository == null) return@LaunchedEffect
         loading = true
         error = null
-        runCatching { repository.library(selectedStatus) }
+        runCatching { repository.library(selectedStatus.takeUnless { it == "all" }) }
             .onSuccess { items = it }
             .onFailure { error = "Your library is unavailable right now." }
         loading = false
@@ -77,7 +77,7 @@ private fun LibraryRow(item: LibraryItem) {
 private fun EmptyLibraryStatus(status: String) {
     Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Nothing ${status} yet.", style = MaterialTheme.typography.headlineSmall)
+            Text(if (status == "all") "Your library is empty." else "Nothing ${status} yet.", style = MaterialTheme.typography.headlineSmall)
             Text("Sync your tracker from Profile to bring this shelf into Panelist.", style = MaterialTheme.typography.bodyLarge)
         }
     }
