@@ -6,10 +6,15 @@ from ..models import NormalizedMedia
 from .base import TrackingProvider
 
 
+class FloppyProviderError(RuntimeError):
+    """A safe, user-facing description of a Floppy API failure."""
+
+
 class FloppyProvider(TrackingProvider):
     connection_path = "/api/v1/user/preferences/"
     library_path = "/api/v1/media/"
     supported_media_types = {"comic", "comics", "manga"}
+    api_media_types = ("comic", "manga")
 
     async def test_connection(self, server_url: str, api_token: str) -> bool:
         headers = {
@@ -26,17 +31,47 @@ class FloppyProvider(TrackingProvider):
             "Authorization": "Bearer " + api_token,
             "X-API-Key": api_token,
         }
+        library: list[dict] = []
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{server_url.rstrip('/')}{self.library_path}", headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, dict):
-            for key in ("results", "items", "data"):
-                value = data.get(key)
-                if isinstance(value, list):
-                    return value
-            return []
-        return data
+            for media_type in self.api_media_types:
+                offset = 0
+                while True:
+                    try:
+                        resp = await client.get(
+                            f"{server_url.rstrip('/')}{self.library_path}",
+                            headers=headers,
+                            params={"media_type": media_type, "limit": 100, "offset": offset},
+                        )
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        raise FloppyProviderError(
+                            f"Floppy API returned HTTP {exc.response.status_code}"
+                        ) from exc
+                    except httpx.HTTPError as exc:
+                        raise FloppyProviderError("Could not reach the Floppy API") from exc
+
+                    try:
+                        data = resp.json()
+                    except ValueError as exc:
+                        raise FloppyProviderError("Floppy API returned invalid JSON") from exc
+
+                    if isinstance(data, list):
+                        page = data
+                        next_url = None
+                    elif isinstance(data, dict):
+                        page = next((data[key] for key in ("results", "items", "data") if isinstance(data.get(key), list)), None)
+                        next_url = data.get("next")
+                    else:
+                        page = None
+                        next_url = None
+                    if page is None:
+                        raise FloppyProviderError("Floppy API returned an unsupported library response")
+
+                    library.extend(page)
+                    if not page or not next_url:
+                        break
+                    offset += len(page)
+        return library
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
         normalized: list[tuple[NormalizedMedia, dict]] = []

@@ -13,7 +13,7 @@ from .db import get_conn, run_migrations
 from .config import settings
 from .metadata_service import MetadataRateLimitError, MetadataSearchService
 from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
-from .providers.floppy import FloppyProvider
+from .providers.floppy import FloppyProvider, FloppyProviderError
 from .providers.kitsu import KitsuProvider
 from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
 from .recommendation import build_recommendations
@@ -413,12 +413,14 @@ async def sync(user=Depends(user_from_auth)):
         )
         conn.commit()
     except Exception as exc:
+        error_message = str(exc)[:240] or "Unknown sync error"
         conn.execute(
             "UPDATE tracker_integrations SET sync_status='error', sync_error=? WHERE user_id = ?",
-            (str(exc)[:240], user["id"]),
+            (error_message, user["id"]),
         )
         conn.commit()
-        raise HTTPException(502, "Sync failed") from exc
+        client_message = error_message if isinstance(exc, FloppyProviderError) else "Tracker sync failed"
+        raise HTTPException(502, f"Sync failed: {client_message}") from exc
 
     return {"ok": True, "status": "syncing your library..."}
 

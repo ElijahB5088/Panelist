@@ -66,6 +66,15 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   and register the exact `MAL_REDIRECT_URI`. Choose `MAL manga` in the Android
   profile screen, complete authorization in the browser, then refresh the
   connection and sync.
+- To enable Kitsu first retreive your api token an easy way is using this command
+  ```powershell
+  curl.exe -X POST "https://kitsu.io/api/oauth/token" `
+  -H "Content-Type: application/x-www-form-urlencoded" `
+  --data-urlencode "grant_type=password" `
+  --data-urlencode "username=YOUR_KITSU_EMAIL_OR_USERNAME" `
+  --data-urlencode "password=YOUR_KITSU_PASSWORD"
+  ```
+  then paste your token into the android apps profile screen, as well as the kitsu url 'https://kitsu.io' 
 
 ## Android app notes
 
