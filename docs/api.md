@@ -20,6 +20,8 @@ Implemented endpoints:
 - `GET /api/history`
 - `GET /api/ratings`
 - `POST /api/integrations/floppy`
+- `GET /api/integrations/floppy/sync-settings`
+- `POST /api/integrations/floppy/sync-settings`
 - `DELETE /api/integrations/floppy`
 - `POST /api/integrations/floppy/test`
 - `POST /api/integrations/kitsu`
@@ -30,6 +32,13 @@ Implemented endpoints:
 - `DELETE /api/integrations/mal`
 - `POST /api/sync`
 - `GET /api/sync/status`
+
+Floppy credentials are encrypted at rest and are never returned by the API.
+Automatic Floppy sync is disabled when a credential is connected or replaced.
+Authenticated clients can enable it with the sync settings endpoint and choose
+an interval from 15 minutes through 7 days. The single Panelist server process
+runs due syncs in the background; failures remain recorded in the integration
+status and are retried on the next interval.
 
 Authentication: bearer token issued by `/api/auth/login`.
 

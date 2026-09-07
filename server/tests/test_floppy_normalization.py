@@ -169,6 +169,19 @@ def test_floppy_normalization_excludes_other_media_types():
     ])
 
     assert [media.id for media, _ in normalized] == ["comic"]
+    assert normalized[0][0].media_type == "comic"
+
+
+def test_floppy_normalization_extracts_cover_aliases():
+    normalized = FloppyProvider().normalize_library([
+        {
+            "media_id": "cover-1",
+            "media_type": "comics",
+            "item": {"title": "Covered", "cover": {"large": "https://example.test/cover.jpg"}},
+        }
+    ])
+
+    assert normalized[0][0].image_url == "https://example.test/cover.jpg"
 
 
 def test_floppy_normalization_accepts_nested_type_and_data_fields():

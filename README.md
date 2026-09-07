@@ -95,6 +95,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 - Provider abstraction: `TrackingProvider` with `FloppyProvider`, the
   manga-only `KitsuProvider`, and the manga-only `MALProvider`
 - Floppy token is encrypted at rest on the Panelist server
+- Floppy automatic sync is opt-in from the Android Profile screen. Choose an
+  interval between 15 minutes and 7 days; the server runs scheduled syncs even
+  when the Android app is closed. Sync failures remain visible and are retried
+  on the next interval.
 - Kitsu tokens are encrypted at rest on the Panelist server
 - MAL OAuth access and refresh tokens are encrypted at rest on the Panelist server
 - Recommendation engine is local, content-based, and explainable

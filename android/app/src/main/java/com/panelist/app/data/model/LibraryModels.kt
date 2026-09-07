@@ -33,7 +33,10 @@ data class ConnectedTracker(
     val connected: Boolean,
     val last_sync: String?,
     val sync_status: String?,
-    val sync_error: String?
+    val sync_error: String?,
+    val auto_sync_enabled: Boolean = false,
+    val auto_sync_interval_minutes: Int = 60,
+    val next_sync_at: String? = null
 )
 
 data class FloppyConfig(val server_url: String, val api_token: String)
@@ -46,6 +49,12 @@ data class FloppyConnectionResponse(
     val connected: Boolean,
     val server_url: String? = null,
     val error: String? = null
+)
+
+data class FloppySyncSettings(
+    val enabled: Boolean,
+    val interval_minutes: Int = 60,
+    val next_sync_at: String? = null
 )
 
 data class SyncStatus(val sync_status: String, val last_sync: String? = null, val error: String? = null)

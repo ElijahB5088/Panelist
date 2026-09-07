@@ -90,6 +90,7 @@ class FloppyProvider(TrackingProvider):
             ).strip().lower()
             if media_type not in self.supported_media_types:
                 continue
+            media_type = "comic" if media_type == "comics" else media_type
             status = self._normalize_status(row.get("status"))
             source = str(row.get("source") or media.get("source") or "").strip() or None
             source_id = str(
@@ -124,7 +125,7 @@ class FloppyProvider(TrackingProvider):
                 source=source,
                 source_id=source_id,
                 media_type=media_type,
-                image_url=media.get("image") or row.get("image"),
+                image_url=self._image_url(media, row),
                 source_url=media.get("source_url") or row.get("source_url") or None,
             )
             lib = {
@@ -141,6 +142,20 @@ class FloppyProvider(TrackingProvider):
             }
             normalized.append((normalized_media, lib))
         return normalized
+
+    @staticmethod
+    def _image_url(media: dict, row: dict) -> str | None:
+        for container in (media, row):
+            for key in ("image", "image_url", "cover", "cover_url", "thumbnail"):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+                if isinstance(value, dict):
+                    for nested_key in ("original_url", "large", "medium", "url"):
+                        nested_value = value.get(nested_key)
+                        if isinstance(nested_value, str) and nested_value.strip():
+                            return nested_value
+        return None
 
     @staticmethod
     def _creator(value: object) -> str | None:

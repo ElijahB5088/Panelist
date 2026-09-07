@@ -184,7 +184,11 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
                     contentScale = ContentScale.Crop,
                     alpha = 0.92f,
                     error = { CoverFallback(pick, accent) },
-                    loading = { CoverFallback(pick, accent) }
+                    loading = {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                    }
                 )
             }
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

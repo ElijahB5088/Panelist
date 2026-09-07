@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -61,7 +62,12 @@ async def lifespan(_: FastAPI):
         """
     )
     conn.commit()
-    yield
+    worker = asyncio.create_task(automatic_sync_worker())
+    try:
+        yield
+    finally:
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
 
 
 app = FastAPI(title="Panelist Server", version="0.1.0", lifespan=lifespan)
@@ -204,6 +210,15 @@ class FloppyConfig(BaseModel):
     api_token: str
 
 
+class FloppySyncSettings(BaseModel):
+    enabled: bool
+    interval_minutes: int = Field(
+        default=settings.sync_interval_minutes,
+        ge=settings.sync_interval_min_minutes,
+        le=settings.sync_interval_max_minutes,
+    )
+
+
 class KitsuConfig(BaseModel):
     server_url: str = "https://kitsu.io"
     api_token: str
@@ -218,6 +233,140 @@ def tracking_provider(provider_name: str):
         return tracking_providers[provider_name]
     except KeyError as exc:
         raise HTTPException(400, f"Unsupported tracker: {provider_name}") from exc
+
+
+def _sync_settings_response(row):
+    return {
+        "enabled": bool(row[0]),
+        "interval_minutes": row[1],
+        "next_sync_at": row[2],
+    }
+
+
+_sync_locks: dict[int, asyncio.Lock] = {}
+
+
+def _sync_lock(user_id: int) -> asyncio.Lock:
+    return _sync_locks.setdefault(user_id, asyncio.Lock())
+
+
+async def sync_user_library(user_id: int) -> None:
+    async with _sync_lock(user_id):
+        row = conn.execute(
+            "SELECT provider, server_url, encrypted_token, auto_sync_enabled, auto_sync_interval_minutes FROM tracker_integrations WHERE user_id = ? AND connected = 1",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("No tracker is connected")
+        active_provider = tracking_provider(row[0])
+
+        conn.execute(
+            "UPDATE tracker_integrations SET sync_status='syncing', sync_error=NULL WHERE user_id = ?",
+            (user_id,),
+        )
+        conn.commit()
+
+        try:
+            credential = decrypt_secret(row[2])
+            if row[0] == "mal":
+                token_bundle = decode_token_bundle(credential)
+                try:
+                    payload = await active_provider.fetch_library(row[1], token_bundle["access_token"])
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 401 or not token_bundle.get("refresh_token"):
+                        raise
+                    refreshed = await active_provider.refresh_token(
+                        settings.mal_client_id,
+                        token_bundle["refresh_token"],
+                        settings.mal_client_secret,
+                    )
+                    conn.execute(
+                        "UPDATE tracker_integrations SET encrypted_token=? WHERE user_id=?",
+                        (encrypt_secret(encode_token_bundle(refreshed, token_bundle)), user_id),
+                    )
+                    conn.commit()
+                    payload = await active_provider.fetch_library(row[1], refreshed["access_token"])
+            else:
+                payload = await active_provider.fetch_library(row[1], credential)
+            normalized = active_provider.normalize_library(payload)
+            if payload and not normalized:
+                raise ValueError("Tracker returned entries, but none were recognized as supported library media")
+            conn.execute("DELETE FROM user_library WHERE user_id = ?", (user_id,))
+            for media, lib in normalized:
+                conn.execute(
+                    """
+                    INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, image_url, source_url, tracker_source, tracker_media_id, tracker_item_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                      title=excluded.title, creator=excluded.creator, genres=excluded.genres,
+                      publisher=excluded.publisher, description=excluded.description, rating=excluded.rating,
+                      source=excluded.source, source_id=excluded.source_id, media_type=excluded.media_type,
+                      image_url=COALESCE(excluded.image_url, media.image_url),
+                      source_url=COALESCE(excluded.source_url, media.source_url),
+                      tracker_source=excluded.tracker_source, tracker_media_id=excluded.tracker_media_id,
+                      tracker_item_id=excluded.tracker_item_id
+                    """,
+                    (
+                        media.id, media.title, media.creator, ",".join(media.genres), media.publisher,
+                        media.description, media.rating, media.source, media.source_id, media.media_type,
+                        media.image_url, media.source_url, lib.get("tracker_source"),
+                        lib.get("tracker_media_id"), lib.get("tracker_item_id"),
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, media_id) DO UPDATE SET
+                      status=excluded.status, progress=excluded.progress, user_rating=excluded.user_rating,
+                      progress_max=excluded.progress_max, progress_unit=excluded.progress_unit,
+                      progress_scope=excluded.progress_scope, progress_percent=excluded.progress_percent
+                    """,
+                    (
+                        user_id, media.id, lib["status"], lib["progress"], lib["user_rating"],
+                        lib.get("progress_max"), lib.get("progress_unit"), lib.get("progress_scope"),
+                        lib.get("progress_percent"),
+                    ),
+                )
+
+            synced_at = datetime.now(timezone.utc)
+            next_sync_at = (
+                (synced_at + timedelta(minutes=row[4])).isoformat()
+                if row[3]
+                else None
+            )
+            conn.execute(
+                "UPDATE tracker_integrations SET last_sync_at=?, next_sync_at=?, sync_status='idle' WHERE user_id = ?",
+                (synced_at.isoformat(), next_sync_at, user_id),
+            )
+            conn.commit()
+        except Exception as exc:
+            error_message = str(exc)[:240] or "Unknown sync error"
+            conn.execute(
+                "UPDATE tracker_integrations SET sync_status='error', sync_error=? WHERE user_id = ?",
+                (error_message, user_id),
+            )
+            conn.commit()
+            raise
+
+
+async def run_due_auto_syncs(now: datetime | None = None) -> None:
+    current = now or datetime.now(timezone.utc)
+    rows = conn.execute(
+        "SELECT user_id FROM tracker_integrations WHERE provider='floppy' AND connected=1 AND auto_sync_enabled=1 AND (next_sync_at IS NULL OR next_sync_at <= ?)",
+        (current.isoformat(),),
+    ).fetchall()
+    for row in rows:
+        try:
+            await sync_user_library(row[0])
+        except Exception:
+            continue
+
+
+async def automatic_sync_worker():
+    while True:
+        await run_due_auto_syncs()
+        await asyncio.sleep(60)
 
 
 def user_from_auth(authorization: str | None = Header(default=None)):
@@ -275,7 +424,7 @@ def me(user=Depends(user_from_auth)):
 @app.get("/api/profile")
 def profile(user=Depends(user_from_auth)):
     integration = conn.execute(
-        "SELECT provider, server_url, connected, last_sync_at, sync_status, sync_error FROM tracker_integrations WHERE user_id = ?",
+        "SELECT provider, server_url, connected, last_sync_at, sync_status, sync_error, auto_sync_enabled, auto_sync_interval_minutes, next_sync_at FROM tracker_integrations WHERE user_id = ?",
         (user["id"],),
     ).fetchone()
     return {
@@ -287,6 +436,9 @@ def profile(user=Depends(user_from_auth)):
             "last_sync": integration[3],
             "sync_status": integration[4],
             "sync_error": integration[5],
+            "auto_sync_enabled": bool(integration[6]),
+            "auto_sync_interval_minutes": integration[7],
+            "next_sync_at": integration[8],
         }
         if integration
         else None,
@@ -395,12 +547,45 @@ def connect_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
         VALUES (?, 'floppy', ?, ?, 1, 'idle')
         ON CONFLICT(user_id) DO UPDATE SET
           provider='floppy', server_url=excluded.server_url,
-          encrypted_token=excluded.encrypted_token, connected=1
+                    encrypted_token=excluded.encrypted_token, connected=1,
+                    auto_sync_enabled=0, next_sync_at=NULL, sync_error=NULL
         """,
         (user["id"], body.server_url, encrypt_secret(body.api_token)),
     )
     conn.commit()
     return {"connected": True, "server_url": body.server_url}
+
+
+@app.get("/api/integrations/floppy/sync-settings")
+def floppy_sync_settings(user=Depends(user_from_auth)):
+    row = conn.execute(
+        "SELECT auto_sync_enabled, auto_sync_interval_minutes, next_sync_at FROM tracker_integrations WHERE user_id = ? AND provider = 'floppy' AND connected = 1",
+        (user["id"],),
+    ).fetchone()
+    if not row:
+        raise HTTPException(400, "Floppy is not connected")
+    return _sync_settings_response(row)
+
+
+@app.post("/api/integrations/floppy/sync-settings")
+def update_floppy_sync_settings(body: FloppySyncSettings, user=Depends(user_from_auth)):
+    row = conn.execute(
+        "SELECT auto_sync_enabled, auto_sync_interval_minutes, next_sync_at FROM tracker_integrations WHERE user_id = ? AND provider = 'floppy' AND connected = 1",
+        (user["id"],),
+    ).fetchone()
+    if not row:
+        raise HTTPException(400, "Floppy is not connected")
+    next_sync_at = datetime.now(timezone.utc).isoformat() if body.enabled else None
+    conn.execute(
+        "UPDATE tracker_integrations SET auto_sync_enabled=?, auto_sync_interval_minutes=?, next_sync_at=? WHERE user_id=?",
+        (int(body.enabled), body.interval_minutes, next_sync_at, user["id"]),
+    )
+    conn.commit()
+    return {
+        "enabled": body.enabled,
+        "interval_minutes": body.interval_minutes,
+        "next_sync_at": next_sync_at,
+    }
 
 
 @app.post("/api/integrations/kitsu")
@@ -435,110 +620,15 @@ def disconnect_kitsu(user=Depends(user_from_auth)):
 
 @app.post("/api/sync")
 async def sync(user=Depends(user_from_auth)):
-    row = conn.execute(
-        "SELECT provider, server_url, encrypted_token FROM tracker_integrations WHERE user_id = ?",
-        (user["id"],),
-    ).fetchone()
-    if not row:
-        raise HTTPException(400, "No tracker is connected")
-    active_provider = tracking_provider(row[0])
-
-    conn.execute(
-        "UPDATE tracker_integrations SET sync_status='syncing', sync_error=NULL WHERE user_id = ?",
-        (user["id"],),
-    )
-    conn.commit()
-
     try:
-        credential = decrypt_secret(row[2])
-        if row[0] == "mal":
-            token_bundle = decode_token_bundle(credential)
-            try:
-                payload = await active_provider.fetch_library(row[1], token_bundle["access_token"])
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code != 401 or not token_bundle.get("refresh_token"):
-                    raise
-                refreshed = await active_provider.refresh_token(
-                    settings.mal_client_id,
-                    token_bundle["refresh_token"],
-                    settings.mal_client_secret,
-                )
-                conn.execute(
-                    "UPDATE tracker_integrations SET encrypted_token=? WHERE user_id=?",
-                    (encrypt_secret(encode_token_bundle(refreshed, token_bundle)), user["id"]),
-                )
-                conn.commit()
-                payload = await active_provider.fetch_library(row[1], refreshed["access_token"])
-        else:
-            payload = await active_provider.fetch_library(row[1], credential)
-        normalized = active_provider.normalize_library(payload)
-        if payload and not normalized:
-            raise ValueError("Tracker returned entries, but none were recognized as supported library media")
-        conn.execute("DELETE FROM user_library WHERE user_id = ?", (user["id"],))
-        for media, lib in normalized:
-            conn.execute(
-                """
-                                INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, image_url, source_url, tracker_source, tracker_media_id, tracker_item_id)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                  title=excluded.title, creator=excluded.creator, genres=excluded.genres,
-                                    publisher=excluded.publisher, description=excluded.description, rating=excluded.rating,
-                                    source=excluded.source, source_id=excluded.source_id, media_type=excluded.media_type,
-                                    image_url=COALESCE(excluded.image_url, media.image_url),
-                                    source_url=COALESCE(excluded.source_url, media.source_url),
-                                    tracker_source=excluded.tracker_source, tracker_media_id=excluded.tracker_media_id,
-                                    tracker_item_id=excluded.tracker_item_id
-                """,
-                (
-                    media.id,
-                    media.title,
-                    media.creator,
-                    ",".join(media.genres),
-                    media.publisher,
-                    media.description,
-                    media.rating,
-                    media.source,
-                    media.source_id,
-                    media.media_type,
-                    media.image_url,
-                    media.source_url,
-                    lib.get("tracker_source"),
-                    lib.get("tracker_media_id"),
-                    lib.get("tracker_item_id"),
-                ),
-            )
-            conn.execute(
-                """
-                INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, media_id) DO UPDATE SET
-                  status=excluded.status, progress=excluded.progress, user_rating=excluded.user_rating,
-                  progress_max=excluded.progress_max, progress_unit=excluded.progress_unit,
-                  progress_scope=excluded.progress_scope, progress_percent=excluded.progress_percent
-                """,
-                (
-                    user["id"], media.id, lib["status"], lib["progress"], lib["user_rating"],
-                    lib.get("progress_max"), lib.get("progress_unit"),
-                    lib.get("progress_scope"), lib.get("progress_percent"),
-                ),
-            )
-
-        conn.execute(
-            "UPDATE tracker_integrations SET last_sync_at=?, sync_status='idle' WHERE user_id = ?",
-            (now_iso(), user["id"]),
-        )
-        conn.commit()
+        await sync_user_library(user["id"])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FloppyProviderError as exc:
+        raise HTTPException(502, f"Sync failed: {exc}") from exc
     except Exception as exc:
-        error_message = str(exc)[:240] or "Unknown sync error"
-        conn.execute(
-            "UPDATE tracker_integrations SET sync_status='error', sync_error=? WHERE user_id = ?",
-            (error_message, user["id"]),
-        )
-        conn.commit()
-        client_message = error_message if isinstance(exc, FloppyProviderError) else "Tracker sync failed"
-        raise HTTPException(502, f"Sync failed: {client_message}") from exc
-
-    return {"ok": True, "status": "syncing your library..."}
+        raise HTTPException(502, "Tracker sync failed") from exc
+    return {"ok": True, "status": "synced"}
 
 
 @app.get("/api/sync/status")
@@ -731,7 +821,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
         featured_results = await _featured(
             request,
             surface="home",
-            limit=limit,
+            limit=min(limit, 50),
             excluded_titles=library_title_keys(conn, user["id"]),
         )
         return [
@@ -744,7 +834,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
         SELECT id, title, creator, genres, rating, description, source, source_id,
                image_url, source_url,
                COALESCE(
-                   media_type,
+                   CASE WHEN media_type = 'comics' THEN 'comic' ELSE media_type END,
                    CASE
                        WHEN source IN ('anilist', 'kitsu', 'mal')
                             OR tracker_source IN ('kitsu', 'mal') THEN 'manga'

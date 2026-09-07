@@ -7,6 +7,8 @@ class Settings:
     secret_key = os.getenv("PANELIST_SECRET_KEY", "dev-secret")
     database_url = os.getenv("DATABASE_URL", "sqlite:///data/panelist.db")
     sync_interval_minutes = int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))
+    sync_interval_min_minutes = 15
+    sync_interval_max_minutes = 10080
     credential_encryption_key = os.getenv("CREDENTIAL_ENCRYPTION_KEY", "")
     comicvine_api_key = os.getenv("COMICVINE_API_KEY", "")
     metron_api_url = os.getenv("METRON_API_URL", "https://metron.cloud/api")
