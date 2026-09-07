@@ -22,10 +22,25 @@ Implemented endpoints:
 - `POST /api/integrations/floppy`
 - `DELETE /api/integrations/floppy`
 - `POST /api/integrations/floppy/test`
+- `POST /api/integrations/kitsu`
+- `DELETE /api/integrations/kitsu`
+- `POST /api/integrations/kitsu/test`
+- `POST /api/integrations/mal/authorize`
+- `GET /api/integrations/mal/callback`
+- `DELETE /api/integrations/mal`
 - `POST /api/sync`
 - `GET /api/sync/status`
 
 Authentication: bearer token issued by `/api/auth/login`.
+
+MAL integration uses server-managed OAuth with PKCE. Set `MAL_CLIENT_ID` and
+register `MAL_REDIRECT_URI` with MyAnimeList. The callback stores encrypted
+access and refresh tokens; Panelist imports only the user's manga list.
+
+Kitsu sync uses the Kitsu API base URL (normally `https://kitsu.io`) and a
+Kitsu bearer token. Only manga library entries are imported; anime entries are
+ignored. The server stores the token encrypted and makes all Kitsu requests on
+behalf of the Android app.
 
 Metadata search queries Comic Vine first when `COMICVINE_API_KEY` is configured,
 then Open Library and AniList. Results include `source`, `source_id`, `image_url`,

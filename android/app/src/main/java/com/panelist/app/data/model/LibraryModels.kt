@@ -29,6 +29,10 @@ data class ConnectedTracker(
 
 data class FloppyConfig(val server_url: String, val api_token: String)
 
+data class KitsuConfig(val server_url: String = "https://kitsu.io", val api_token: String)
+
+data class MALAuthorizeResponse(val authorization_url: String)
+
 data class FloppyConnectionResponse(
     val connected: Boolean,
     val server_url: String? = null,

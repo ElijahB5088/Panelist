@@ -3,6 +3,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import httpx
 import sqlite3
+from datetime import datetime, timedelta, timezone
+from html import escape
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -11,6 +14,8 @@ from .config import settings
 from .metadata_service import MetadataRateLimitError, MetadataSearchService
 from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider
+from .providers.kitsu import KitsuProvider
+from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
 from .recommendation import build_recommendations
 from .security import (
     decrypt_secret,
@@ -23,7 +28,11 @@ from .security import (
 
 conn = get_conn()
 run_migrations(conn)
-provider = FloppyProvider()
+tracking_providers = {
+    "floppy": FloppyProvider(),
+    "kitsu": KitsuProvider(),
+    "mal": MALProvider(),
+}
 metadata_providers = [
     ComicVineProvider(settings.comicvine_api_key, settings.metadata_user_agent),
     MetronProvider(settings.metron_api_url, settings.metron_api_token, settings.metadata_user_agent),
@@ -96,6 +105,22 @@ class Credentials(BaseModel):
 class FloppyConfig(BaseModel):
     server_url: str
     api_token: str
+
+
+class KitsuConfig(BaseModel):
+    server_url: str = "https://kitsu.io"
+    api_token: str
+
+
+class MALAuthorizeResponse(BaseModel):
+    authorization_url: str
+
+
+def tracking_provider(provider_name: str):
+    try:
+        return tracking_providers[provider_name]
+    except KeyError as exc:
+        raise HTTPException(400, f"Unsupported tracker: {provider_name}") from exc
 
 
 def user_from_auth(authorization: str | None = Header(default=None)):
@@ -171,10 +196,62 @@ def profile(user=Depends(user_from_auth)):
     }
 
 
+@app.post("/api/integrations/mal/authorize", response_model=MALAuthorizeResponse)
+def authorize_mal(user=Depends(user_from_auth)):
+    if not settings.mal_client_id:
+        raise HTTPException(503, "MAL_CLIENT_ID is not configured")
+    provider = tracking_providers["mal"]
+    authorization = provider.create_authorization(settings.mal_client_id, settings.mal_redirect_uri)
+    conn.execute("DELETE FROM mal_oauth_states WHERE expires_at < ?", (now_iso(),))
+    conn.execute(
+        "INSERT INTO mal_oauth_states (state, user_id, code_verifier, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+        (authorization.state, user["id"], authorization.code_verifier, now_iso(), (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()),
+    )
+    conn.commit()
+    return {"authorization_url": authorization.authorization_url}
+
+
+@app.get("/api/integrations/mal/callback", response_class=HTMLResponse)
+async def mal_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    if error or not code or not state:
+        return HTMLResponse(f"<h1>MyAnimeList connection failed</h1><p>{escape(error or 'Invalid callback.')}</p>", status_code=400)
+    row = conn.execute(
+        "SELECT user_id, code_verifier FROM mal_oauth_states WHERE state = ? AND expires_at >= ?",
+        (state, now_iso()),
+    ).fetchone()
+    if not row:
+        return HTMLResponse("<h1>MyAnimeList connection failed</h1><p>Expired or invalid authorization state.</p>", status_code=400)
+    conn.execute("DELETE FROM mal_oauth_states WHERE state = ?", (state,))
+    conn.commit()
+    try:
+        tokens = await tracking_providers["mal"].exchange_code(settings.mal_client_id, code, row[1], settings.mal_redirect_uri)
+        conn.execute(
+            """
+            INSERT INTO tracker_integrations (user_id, provider, server_url, encrypted_token, connected, sync_status)
+            VALUES (?, 'mal', 'https://api.myanimelist.net/v2', ?, 1, 'idle')
+            ON CONFLICT(user_id) DO UPDATE SET
+              provider='mal', server_url=excluded.server_url,
+              encrypted_token=excluded.encrypted_token, connected=1, sync_error=NULL
+            """,
+            (row[0], encrypt_secret(encode_token_bundle(tokens))),
+        )
+        conn.commit()
+    except httpx.HTTPError:
+        return HTMLResponse("<h1>MyAnimeList connection failed</h1><p>Could not complete authorization.</p>", status_code=502)
+    return HTMLResponse("<h1>MyAnimeList connected</h1><p>You can return to Panelist and sync your manga library.</p>")
+
+
+@app.delete("/api/integrations/mal")
+def disconnect_mal(user=Depends(user_from_auth)):
+    conn.execute("DELETE FROM tracker_integrations WHERE user_id = ?", (user["id"],))
+    conn.commit()
+    return {"ok": True}
+
+
 @app.post("/api/integrations/floppy/test")
 async def test_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
     try:
-        ok = await provider.test_connection(body.server_url, body.api_token)
+        ok = await tracking_providers["floppy"].test_connection(body.server_url, body.api_token)
     except httpx.HTTPStatusError as exc:
         response = exc.response
         detail = response.text[:240] or response.reason_phrase
@@ -186,6 +263,24 @@ async def test_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
     except httpx.HTTPError as exc:
         detail = str(exc) or type(exc).__name__
         raise HTTPException(502, f"Could not reach Floppy at {body.server_url}: {detail}") from exc
+    return {"connected": ok, "server_url": body.server_url}
+
+
+@app.post("/api/integrations/kitsu/test")
+async def test_kitsu(body: KitsuConfig, user=Depends(user_from_auth)):
+    try:
+        ok = await tracking_providers["kitsu"].test_connection(body.server_url, body.api_token)
+    except httpx.HTTPStatusError as exc:
+        response = exc.response
+        detail = response.text[:240] or response.reason_phrase
+        return {
+            "connected": False,
+            "server_url": body.server_url,
+            "error": f"Kitsu returned HTTP {response.status_code}: {detail}",
+        }
+    except httpx.HTTPError as exc:
+        detail = str(exc) or type(exc).__name__
+        raise HTTPException(502, f"Could not reach Kitsu at {body.server_url}: {detail}") from exc
     return {"connected": ok, "server_url": body.server_url}
 
 
@@ -205,6 +300,22 @@ def connect_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
     return {"connected": True, "server_url": body.server_url}
 
 
+@app.post("/api/integrations/kitsu")
+def connect_kitsu(body: KitsuConfig, user=Depends(user_from_auth)):
+        conn.execute(
+                """
+                INSERT INTO tracker_integrations (user_id, provider, server_url, encrypted_token, connected, sync_status)
+                VALUES (?, 'kitsu', ?, ?, 1, 'idle')
+                ON CONFLICT(user_id) DO UPDATE SET
+                    provider='kitsu', server_url=excluded.server_url,
+                    encrypted_token=excluded.encrypted_token, connected=1
+                """,
+                (user["id"], body.server_url, encrypt_secret(body.api_token)),
+        )
+        conn.commit()
+        return {"connected": True, "server_url": body.server_url}
+
+
 @app.delete("/api/integrations/floppy")
 def disconnect_floppy(user=Depends(user_from_auth)):
     conn.execute("DELETE FROM tracker_integrations WHERE user_id = ?", (user["id"],))
@@ -212,11 +323,22 @@ def disconnect_floppy(user=Depends(user_from_auth)):
     return {"ok": True}
 
 
+@app.delete("/api/integrations/kitsu")
+def disconnect_kitsu(user=Depends(user_from_auth)):
+    conn.execute("DELETE FROM tracker_integrations WHERE user_id = ?", (user["id"],))
+    conn.commit()
+    return {"ok": True}
+
+
 @app.post("/api/sync")
 async def sync(user=Depends(user_from_auth)):
-    row = conn.execute("SELECT server_url, encrypted_token FROM tracker_integrations WHERE user_id = ?", (user["id"],)).fetchone()
+    row = conn.execute(
+        "SELECT provider, server_url, encrypted_token FROM tracker_integrations WHERE user_id = ?",
+        (user["id"],),
+    ).fetchone()
     if not row:
-        raise HTTPException(400, "Floppy is not connected")
+        raise HTTPException(400, "No tracker is connected")
+    active_provider = tracking_provider(row[0])
 
     conn.execute(
         "UPDATE tracker_integrations SET sync_status='syncing', sync_error=NULL WHERE user_id = ?",
@@ -225,8 +347,24 @@ async def sync(user=Depends(user_from_auth)):
     conn.commit()
 
     try:
-        payload = await provider.fetch_library(row[0], decrypt_secret(row[1]))
-        normalized = provider.normalize_library(payload)
+        credential = decrypt_secret(row[2])
+        if row[0] == "mal":
+            token_bundle = decode_token_bundle(credential)
+            try:
+                payload = await active_provider.fetch_library(row[1], token_bundle["access_token"])
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 401 or not token_bundle.get("refresh_token"):
+                    raise
+                refreshed = await active_provider.refresh_token(settings.mal_client_id, token_bundle["refresh_token"])
+                conn.execute(
+                    "UPDATE tracker_integrations SET encrypted_token=? WHERE user_id=?",
+                    (encrypt_secret(encode_token_bundle(refreshed)), user["id"]),
+                )
+                conn.commit()
+                payload = await active_provider.fetch_library(row[1], refreshed["access_token"])
+        else:
+            payload = await active_provider.fetch_library(row[1], credential)
+        normalized = active_provider.normalize_library(payload)
         conn.execute("DELETE FROM user_library WHERE user_id = ?", (user["id"],))
         for media, lib in normalized:
             conn.execute(

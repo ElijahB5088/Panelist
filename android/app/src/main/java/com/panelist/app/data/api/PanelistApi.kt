@@ -7,6 +7,8 @@ import com.panelist.app.data.model.Credentials
 import com.panelist.app.data.model.FeedbackResponse
 import com.panelist.app.data.model.FloppyConfig
 import com.panelist.app.data.model.FloppyConnectionResponse
+import com.panelist.app.data.model.KitsuConfig
+import com.panelist.app.data.model.MALAuthorizeResponse
 import com.panelist.app.data.model.LibraryItem
 import com.panelist.app.data.model.ProfileResponse
 import com.panelist.app.data.model.SyncStatus
@@ -60,6 +62,15 @@ interface PanelistApi {
 
     @POST("/api/integrations/floppy")
     suspend fun connectFloppy(@Body config: FloppyConfig): FloppyConnectionResponse
+
+    @POST("/api/integrations/kitsu/test")
+    suspend fun testKitsu(@Body config: KitsuConfig): FloppyConnectionResponse
+
+    @POST("/api/integrations/kitsu")
+    suspend fun connectKitsu(@Body config: KitsuConfig): FloppyConnectionResponse
+
+    @POST("/api/integrations/mal/authorize")
+    suspend fun authorizeMAL(): MALAuthorizeResponse
 
     @POST("/api/sync")
     suspend fun sync(): FeedbackResponse

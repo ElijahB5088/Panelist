@@ -42,16 +42,23 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ## Backend notes
 
-- Provider abstraction: `TrackingProvider` with initial `FloppyProvider`
+- Provider abstraction: `TrackingProvider` with `FloppyProvider`, the
+  manga-only `KitsuProvider`, and the manga-only `MALProvider`
 - Floppy token is encrypted at rest on the Panelist server
+- Kitsu tokens are encrypted at rest on the Panelist server
+- MAL OAuth access and refresh tokens are encrypted at rest on the Panelist server
 - Recommendation engine is local, content-based, and explainable
-- App never talks directly to Floppy with user token
-- The Panelist server makes the Floppy request. If Floppy is running on the
+- App never talks directly to a tracker with the user token
+- The Panelist server makes tracker requests. If Floppy is running on the
   Docker host, use `http://host.docker.internal:<port>` as its URL; `localhost`
   inside the app refers to the Panelist container, not the host machine.
 - For HTTPS Floppy URLs, the certificate must be trusted by the Panelist
   container and match the hostname. A self-signed or private-CA certificate
   will fail TLS verification unless its CA is installed in the image.
+- To enable MyAnimeList, create an API client in MyAnimeList, set `MAL_CLIENT_ID`,
+  and register the exact `MAL_REDIRECT_URI`. Choose `MAL manga` in the Android
+  profile screen, complete authorization in the browser, then refresh the
+  connection and sync.
 
 ## Android app notes
 
