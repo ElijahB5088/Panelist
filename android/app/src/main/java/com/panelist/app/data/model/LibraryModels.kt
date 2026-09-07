@@ -29,6 +29,10 @@ data class ConnectedTracker(
 
 data class FloppyConfig(val server_url: String, val api_token: String)
 
-data class FloppyConnectionResponse(val connected: Boolean, val server_url: String? = null)
+data class FloppyConnectionResponse(
+    val connected: Boolean,
+    val server_url: String? = null,
+    val error: String? = null
+)
 
 data class SyncStatus(val sync_status: String, val last_sync: String? = null, val error: String? = null)

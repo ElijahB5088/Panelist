@@ -68,6 +68,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 - The Panelist server makes the Floppy request. If Floppy is running on the
   Docker host, use `http://host.docker.internal:<port>` as its URL; `localhost`
   inside the app refers to the Panelist container, not the host machine.
+- For HTTPS Floppy URLs, the certificate must be trusted by the Panelist
+  container and match the hostname. A self-signed or private-CA certificate
+  will fail TLS verification unless its CA is installed in the image.
 
 ## Android app notes
 

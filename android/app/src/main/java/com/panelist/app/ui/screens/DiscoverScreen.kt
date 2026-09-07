@@ -62,11 +62,8 @@ fun DiscoverScreen(
         }
     }
     val filteredResults = results.filter { result ->
-        val matchesQuery = query.isBlank() || listOf(result.title, result.creator, result.publisher).any { field ->
-            field?.contains(query, ignoreCase = true) == true
-        }
         val matchesSource = selectedSource == "All" || result.source == selectedSource
-        matchesQuery && matchesSource
+        matchesSource
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

@@ -63,7 +63,8 @@ fun ProfileScreen(repository: ProfileRepository? = null) {
                             busy = true
                             status = runCatching {
                                 val config = FloppyConfig(serverUrl.trim(), token)
-                                if (!activeRepository.test(config)) error("Connection test failed")
+                                val testResult = activeRepository.test(config)
+                                if (!testResult.connected) error(testResult.error ?: "Connection test failed")
                                 activeRepository.connect(config)
                                 "Floppy connected."
                             }.getOrElse { it.message ?: "Connection failed." }

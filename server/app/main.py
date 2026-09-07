@@ -150,8 +150,17 @@ def profile(user=Depends(user_from_auth)):
 async def test_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
     try:
         ok = await provider.test_connection(body.server_url, body.api_token)
+    except httpx.HTTPStatusError as exc:
+        response = exc.response
+        detail = response.text[:240] or response.reason_phrase
+        return {
+            "connected": False,
+            "server_url": body.server_url,
+            "error": f"Floppy returned HTTP {response.status_code}: {detail}",
+        }
     except httpx.HTTPError as exc:
-        raise HTTPException(502, f"Could not reach Floppy at {body.server_url}: {exc}") from exc
+        detail = str(exc) or type(exc).__name__
+        raise HTTPException(502, f"Could not reach Floppy at {body.server_url}: {detail}") from exc
     return {"connected": ok, "server_url": body.server_url}
 
 
