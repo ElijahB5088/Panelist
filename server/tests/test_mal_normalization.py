@@ -26,6 +26,7 @@ def test_mal_normalization_maps_manga_list_status():
                 "title": "Berserk",
                 "synopsis": "A dark fantasy manga.",
                 "mean": 9.2,
+                "main_picture": {"large": "https://example.test/berserk.jpg"},
                 "genres": [{"name": "Fantasy"}],
                 "authors": [{"node": {"first_name": "Kentaro", "last_name": "Miura"}}],
                 "serialization": [{"node": {"name": "Young Animal"}}],
@@ -38,6 +39,8 @@ def test_mal_normalization_maps_manga_list_status():
     assert media.id == "mal:2"
     assert media.creator == "Kentaro Miura"
     assert media.publisher == "Young Animal"
+    assert media.media_type == "manga"
+    assert media.image_url == "https://example.test/berserk.jpg"
     assert library == {"status": "reading", "progress": 30, "user_rating": 10.0}
 
 

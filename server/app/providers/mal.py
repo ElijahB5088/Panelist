@@ -120,6 +120,8 @@ class MALProvider(TrackingProvider):
                 publisher=publisher,
                 description=manga.get("synopsis"),
                 rating=self._number(manga.get("mean")),
+                media_type="manga",
+                image_url=(manga.get("main_picture") or {}).get("large") or (manga.get("main_picture") or {}).get("medium"),
             )
             normalized.append(
                 (

@@ -76,6 +76,8 @@ class KitsuProvider(TrackingProvider):
                 publisher=attributes.get("publisher") or attributes.get("serialization"),
                 description=attributes.get("synopsis") or attributes.get("description"),
                 rating=self._number(attributes.get("averageRating")),
+                media_type="manga",
+                image_url=(attributes.get("posterImage") or {}).get("large"),
             )
             normalized.append(
                 (

@@ -21,6 +21,7 @@ def test_kitsu_normalization_is_manga_only():
                     "authors": [{"name": "Kamome Shirahama"}],
                     "averageRating": "88.5",
                     "genres": ["Fantasy"],
+                    "posterImage": {"large": "https://example.test/witch-hat.jpg"},
                 },
             },
             "status": "current",
@@ -42,6 +43,8 @@ def test_kitsu_normalization_is_manga_only():
     assert media.title == "Witch Hat Atelier"
     assert media.creator == "Kamome Shirahama"
     assert media.rating == 88.5
+    assert media.media_type == "manga"
+    assert media.image_url == "https://example.test/witch-hat.jpg"
     assert library == {"status": "reading", "progress": 7, "user_rating": 5.0}
 
 

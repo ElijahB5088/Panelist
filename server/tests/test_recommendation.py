@@ -47,6 +47,18 @@ def test_recommendations_exclude_duplicate_library_titles_across_ids():
     assert "duplicate" not in [recommendation.media_id for recommendation in recs]
 
 
+def test_recommendations_exclude_punctuation_variants_of_library_titles():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('punctuated', 'Saga!', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.commit()
+
+    recs = build_recommendations(conn, 1, 10)
+
+    assert "punctuated" not in [recommendation.media_id for recommendation in recs]
+
+
 def test_recommendations_respect_dismiss_feedback():
     conn = setup_db()
     conn.execute("INSERT INTO recommendation_feedback (user_id, media_id, feedback, created_at) VALUES (1, 'a', 'dismiss', 'x')")

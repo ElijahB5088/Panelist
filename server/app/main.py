@@ -15,7 +15,7 @@ from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvid
 from .providers.floppy import FloppyProvider, FloppyProviderError
 from .providers.kitsu import KitsuProvider
 from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
-from .recommendation import _normalize, build_recommendations, library_title_keys
+from .recommendation import _normalize_title, build_recommendations, library_title_keys
 from .security import (
     decrypt_secret,
     encrypt_secret,
@@ -710,7 +710,7 @@ async def _featured(request: Request, surface: str = "discover", limit: int = 10
             if group.group_id not in seen:
                 seen.add(group.group_id)
                 item = _metadata_group_response(group)
-                if excluded_titles and _normalize(item["primary"]["title"]) in excluded_titles:
+                if excluded_titles and _normalize_title(item["primary"]["title"]) in excluded_titles:
                     continue
                 results.append(item)
             if len(results) >= limit:
@@ -724,7 +724,7 @@ async def featured(request: Request, surface: str = "discover", limit: int = 10)
 
 
 @app.get("/api/recommendations")
-async def recommendations(request: Request, user=Depends(user_from_auth), limit: int = 20):
+async def recommendations(request: Request, user=Depends(user_from_auth), limit: int = 100):
     recs = build_recommendations(conn, user["id"], limit=limit)
     ids = [r.media_id for r in recs]
     if not ids:
@@ -740,7 +740,22 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
         ]
     placeholders = ",".join("?" for _ in ids)
     rows = conn.execute(
-        f"SELECT id, title, creator, genres, rating, description, source, source_id, image_url, source_url, media_type, release_date FROM media WHERE id IN ({placeholders})",
+        f"""
+        SELECT id, title, creator, genres, rating, description, source, source_id,
+               image_url, source_url,
+               COALESCE(
+                   media_type,
+                   CASE
+                       WHEN source IN ('anilist', 'kitsu', 'mal')
+                            OR tracker_source IN ('kitsu', 'mal') THEN 'manga'
+                       WHEN source IN ('comicvine', 'metron', 'openlibrary')
+                            OR tracker_source = 'floppy' THEN 'comic'
+                   END
+               ) AS media_type,
+               release_date
+        FROM media
+        WHERE id IN ({placeholders})
+        """,
         ids,
     ).fetchall()
     by_id = {r[0]: r for r in rows}
