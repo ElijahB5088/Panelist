@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import re
 import time
 from collections import OrderedDict, defaultdict, deque
 
-from .metadata import MetadataResult
+from .metadata import MetadataGroup, MetadataResult
 from .providers.metadata import MetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,15 @@ class MetadataSearchService:
             self._cache.popitem(last=False)
         return results
 
+    async def grouped_search(
+        self,
+        query: str,
+        limit: int = 10,
+        preferred_source: str | None = None,
+    ) -> list[MetadataGroup]:
+        results = await self.search(query, limit=limit)
+        return group_metadata(results, self.providers, preferred_source=preferred_source)
+
     async def _wait_for_upstream(self, provider_name: str) -> None:
         async with self._upstream_locks[provider_name]:
             last_request = self._last_upstream_request.get(provider_name)
@@ -78,3 +89,46 @@ class MetadataSearchService:
                 if delay > 0:
                     await asyncio.sleep(delay)
             self._last_upstream_request[provider_name] = time.monotonic()
+
+
+def group_metadata(
+    results: list[MetadataResult],
+    providers: list[MetadataProvider],
+    preferred_source: str | None = None,
+) -> list[MetadataGroup]:
+    provider_order = {provider.name: index for index, provider in enumerate(providers)}
+    groups: dict[str, list[MetadataResult]] = {}
+    order: list[str] = []
+    for result in results:
+        key = _metadata_group_key(result)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        if not any(
+            variant.source == result.source and variant.source_id == result.source_id
+            for variant in groups[key]
+        ):
+            groups[key].append(result)
+
+    grouped = []
+    for key in order:
+        variants = groups[key]
+        variants.sort(key=lambda item: (provider_order.get(item.source, len(provider_order)), item.source, item.source_id))
+        primary = next(
+            (variant for variant in variants if variant.source == preferred_source),
+            variants[0],
+        )
+        group_id = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+        grouped.append(MetadataGroup(group_id=group_id, primary=primary, variants=variants))
+    return grouped
+
+
+def _metadata_group_key(result: MetadataResult) -> str:
+    title = _normalize_identity(result.title)
+    creator = _normalize_identity(result.creator or "")
+    year = (result.release_date or "")[:4]
+    return "|".join((title, creator, year))
+
+
+def _normalize_identity(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()

@@ -16,3 +16,10 @@ class MetadataResult:
     release_date: str | None = None
     image_url: str | None = None
     source_url: str | None = None
+
+
+@dataclass
+class MetadataGroup:
+    group_id: str
+    primary: MetadataResult
+    variants: list[MetadataResult]

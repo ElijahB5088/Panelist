@@ -9,6 +9,7 @@ from .base import TrackingProvider
 class FloppyProvider(TrackingProvider):
     connection_path = "/api/v1/user/preferences/"
     library_path = "/api/v1/media/"
+    supported_media_types = {"comic", "comics", "manga"}
 
     async def test_connection(self, server_url: str, api_token: str) -> bool:
         headers = {
@@ -39,6 +40,15 @@ class FloppyProvider(TrackingProvider):
             media = row.get("item") or row.get("media") or {}
             if not isinstance(media, dict):
                 media = {}
+            media_type = str(
+                row.get("library_media_type")
+                or row.get("media_type")
+                or media.get("library_media_type")
+                or media.get("media_type")
+                or ""
+            ).strip().lower()
+            if media_type not in self.supported_media_types:
+                continue
             status = self._normalize_status(row.get("status"))
             normalized_media = NormalizedMedia(
                 id=str(row.get("media_id") or media.get("media_id") or media.get("id") or row.get("id")),

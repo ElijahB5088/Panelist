@@ -13,3 +13,12 @@ data class MetadataResult(
     val image_url: String?,
     val source_url: String?
 )
+
+data class MetadataGroup(
+    val id: String,
+    val primary: MetadataResult,
+    val variants: List<MetadataResult>
+) {
+    fun preferred(preferredSource: String? = null): MetadataResult =
+        variants.firstOrNull { it.source == preferredSource } ?: primary
+}

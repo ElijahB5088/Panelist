@@ -32,33 +32,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.SubcomposeAsyncImage
 import kotlinx.coroutines.delay
+import com.panelist.app.data.model.MetadataGroup
 import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.data.repository.MetadataRepository
+import com.panelist.app.data.session.SessionStore
 
 @Composable
 fun DiscoverScreen(
     repository: MetadataRepository? = null,
-    onOpenDetail: (MetadataResult) -> Unit = {}
+    sessionStore: SessionStore? = null,
+    onOpenDetail: (MetadataGroup) -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf("All") }
-    var results by remember { mutableStateOf(emptyList<MetadataResult>()) }
+    var results by remember { mutableStateOf(demoMetadata.map { MetadataGroup(it.source + it.source_id, it, listOf(it)) }) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query, repository) {
         delay(350)
-        if (repository == null) {
-            results = emptyList()
+        if (query.trim().length < 2 || repository == null) {
+                results = demoMetadata.map { MetadataGroup(it.source + it.source_id, it, listOf(it)) }
             isLoading = false
-            errorMessage = "Metadata search is unavailable right now."
-        } else if (query.trim().length < 2) {
-            isLoading = true
             errorMessage = null
-            runCatching { repository.featured("discover") }
-                .onSuccess { results = it }
-                .onFailure { errorMessage = "Metadata search is unavailable right now." }
-            isLoading = false
         } else {
             isLoading = true
             errorMessage = null
@@ -68,8 +64,9 @@ fun DiscoverScreen(
             isLoading = false
         }
     }
-    val filteredResults = results.filter { result ->
-        val matchesSource = selectedSource == "All" || result.source == selectedSource
+    val preferredSource = sessionStore?.preferredSource()
+    val filteredResults = results.filter { group ->
+        val matchesSource = selectedSource == "All" || group.variants.any { it.source == selectedSource }
         matchesSource
     }
 
@@ -106,8 +103,8 @@ fun DiscoverScreen(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(filteredResults, key = { "${it.source}:${it.source_id}" }) { result ->
-                    MetadataCard(result, onClick = { onOpenDetail(result) })
+                items(filteredResults, key = { it.id }) { group ->
+                    MetadataCard(group.preferred(if (selectedSource == "All") preferredSource else selectedSource), group.variants.size, onClick = { onOpenDetail(group) })
                 }
             }
         }
@@ -115,7 +112,7 @@ fun DiscoverScreen(
 }
 
 @Composable
-private fun MetadataCard(result: MetadataResult, onClick: () -> Unit) {
+private fun MetadataCard(result: MetadataResult, variantCount: Int, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp, modifier = Modifier.clickable(onClick = onClick)) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
             val accent = when (result.source) {
@@ -134,6 +131,7 @@ private fun MetadataCard(result: MetadataResult, onClick: () -> Unit) {
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(result.title, style = MaterialTheme.typography.titleMedium)
+                if (variantCount > 1) Text("$variantCount versions", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 Text(result.creator ?: "Creator unknown", color = MaterialTheme.colorScheme.primary)
                 Text(listOfNotNull(result.publisher, result.release_date).joinToString("  /  "), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 result.rating?.let { Text("Rating ${"%.1f".format(it)} / 10", style = MaterialTheme.typography.labelLarge) }
@@ -154,3 +152,10 @@ private fun CoverFallback(result: MetadataResult, accent: Color) {
         Text(result.source, modifier = Modifier.padding(8.dp), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge)
     }
 }
+
+private val demoMetadata = listOf(
+    MetadataResult("comicvine", "4050", "Saga", "Brian K. Vaughan", listOf("Sci-fi", "Drama"), "Image", "A family crosses a war-torn galaxy.", 8.8, "2012-01-01", "https://example.com/saga.jpg", "https://comicvine.gamespot.com/saga/"),
+    MetadataResult("comicvine", "4051", "Monstress", "Marjorie Liu", listOf("Fantasy", "Drama"), "Image", "A young woman shares a psychic link with a monster.", 8.7, "2015-01-01", "https://example.com/monstress.jpg", "https://comicvine.gamespot.com/monstress/"),
+    MetadataResult("anilist", "30002", "Witch Hat Atelier", "Kamome Shirahama", listOf("Fantasy", "Adventure"), null, "A girl discovers that magic is drawn, not born.", 9.0, "2016-07-22", "https://example.com/witch-hat.jpg", "https://anilist.co/manga/100572"),
+    MetadataResult("openlibrary", "OL123W", "The Sandman", "Neil Gaiman", listOf("Fantasy", "Comics"), "DC Comics", "Dreams, stories, and the cost of immortality.", 8.6, "1989-01-01", "https://example.com/sandman.jpg", "https://openlibrary.org/works/OL123W")
+)

@@ -1,7 +1,7 @@
 package com.panelist.app.data.api
 
 import com.panelist.app.data.model.Recommendation
-import com.panelist.app.data.model.MetadataResult
+import com.panelist.app.data.model.MetadataGroup
 import com.panelist.app.data.model.AuthResponse
 import com.panelist.app.data.model.Credentials
 import com.panelist.app.data.model.FeedbackResponse
@@ -41,13 +41,13 @@ interface PanelistApi {
     suspend fun metadataSearch(
         @Query("q") query: String,
         @Query("limit") limit: Int = 10
-    ): List<MetadataResult>
+    ): List<MetadataGroup>
 
     @GET("/api/featured")
     suspend fun featured(
         @Query("surface") surface: String,
         @Query("limit") limit: Int = 10
-    ): List<MetadataResult>
+    ): List<MetadataGroup>
 
     @GET("/api/library")
     suspend fun library(@Query("status") status: String? = null): List<LibraryItem>

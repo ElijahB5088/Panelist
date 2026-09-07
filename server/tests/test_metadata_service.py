@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from app.metadata import MetadataResult
-from app.metadata_service import MetadataRateLimitError, MetadataSearchService
+from app.metadata_service import MetadataRateLimitError, MetadataSearchService, group_metadata
 from app.providers.metadata import MetadataProvider
 
 
@@ -16,6 +16,15 @@ class FakeProvider(MetadataProvider):
     async def search(self, query: str, limit: int = 10) -> list[MetadataResult]:
         self.calls += 1
         return [MetadataResult(self.name, str(self.calls), query)]
+
+
+class NamedProvider(MetadataProvider):
+    def __init__(self, name: str, results: list[MetadataResult]):
+        self.name = name
+        self.results = results
+
+    async def search(self, query: str, limit: int = 10) -> list[MetadataResult]:
+        return self.results
 
 
 def test_metadata_search_caches_normalized_query():
@@ -52,3 +61,31 @@ def test_metadata_client_limit_raises_after_window_is_full():
     service.check_client_limit("client")
     with pytest.raises(MetadataRateLimitError):
         service.check_client_limit("client")
+
+
+def test_group_metadata_collapses_equivalent_provider_results_and_keeps_variants():
+    results = [
+        MetadataResult("comicvine", "1", "Saga", "Brian K. Vaughan", release_date="2012-03-14"),
+        MetadataResult("openlibrary", "OL1", "Saga!", "Brian K. Vaughan", release_date="2012-01-01"),
+        MetadataResult("anilist", "2", "Saga", "Different Creator", release_date="2012-03-14"),
+    ]
+
+    providers = [NamedProvider("comicvine", []), NamedProvider("openlibrary", []), NamedProvider("anilist", [])]
+    groups = group_metadata(results, providers)
+
+    assert len(groups) == 2
+    assert groups[0].group_id
+    assert [(variant.source, variant.source_id) for variant in groups[0].variants] == [("comicvine", "1"), ("openlibrary", "OL1")]
+    assert groups[0].primary.source == "comicvine"
+
+
+def test_group_metadata_prefers_requested_source_when_available():
+    results = [
+        MetadataResult("comicvine", "1", "Saga", "Brian K. Vaughan"),
+        MetadataResult("openlibrary", "OL1", "Saga", "Brian K. Vaughan"),
+    ]
+
+    providers = [NamedProvider("comicvine", []), NamedProvider("openlibrary", [])]
+    groups = group_metadata(results, providers, preferred_source="openlibrary")
+
+    assert groups[0].primary.source == "openlibrary"

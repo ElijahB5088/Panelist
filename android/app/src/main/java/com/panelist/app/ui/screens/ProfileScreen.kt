@@ -2,10 +2,13 @@ package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -17,16 +20,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.panelist.app.data.model.FloppyConfig
 import com.panelist.app.data.model.ProfileResponse
 import com.panelist.app.data.repository.ProfileRepository
+import com.panelist.app.data.session.SessionStore
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(repository: ProfileRepository? = null) {
+fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionStore? = null) {
     val scope = rememberCoroutineScope()
     var profile by remember { mutableStateOf<ProfileResponse?>(null) }
     var serverUrl by remember { mutableStateOf("") }
@@ -34,6 +39,7 @@ fun ProfileScreen(repository: ProfileRepository? = null) {
     var status by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var preferredSource by remember { mutableStateOf(sessionStore?.preferredSource()) }
 
     LaunchedEffect(repository) {
         if (repository != null) runCatching { repository.profile() }.onSuccess { loaded ->
@@ -88,6 +94,27 @@ fun ProfileScreen(repository: ProfileRepository? = null) {
                     }
                 ) { Text("Sync library") }
                 status?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+            }
+        }
+        Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Preferred metadata copy", style = MaterialTheme.typography.headlineSmall)
+                Text("Choose which catalog to open first when several versions are available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(null to "Any source", "comicvine" to "Comic Vine", "openlibrary" to "Open Library", "anilist" to "AniList", "metron" to "Metron").forEach { (source, label) ->
+                        FilterChip(
+                            selected = preferredSource == source,
+                            onClick = {
+                                preferredSource = source
+                                sessionStore?.savePreferredSource(source)
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
             }
         }
     }

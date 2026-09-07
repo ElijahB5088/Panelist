@@ -80,6 +80,14 @@ def _metadata_response(result):
     }
 
 
+def _metadata_group_response(group):
+    return {
+        "id": group.group_id,
+        "primary": _metadata_response(group.primary),
+        "variants": [_metadata_response(result) for result in group.variants],
+    }
+
+
 class Credentials(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=6)
@@ -219,6 +227,7 @@ async def sync(user=Depends(user_from_auth)):
     try:
         payload = await provider.fetch_library(row[0], decrypt_secret(row[1]))
         normalized = provider.normalize_library(payload)
+        conn.execute("DELETE FROM user_library WHERE user_id = ?", (user["id"],))
         for media, lib in normalized:
             conn.execute(
                 """
@@ -385,8 +394,8 @@ async def metadata_search(request: Request, q: str, limit: int = 10):
         metadata_service.check_client_limit(request.client.host if request.client else "unknown")
     except MetadataRateLimitError as exc:
         raise HTTPException(429, "Metadata search rate limit exceeded") from exc
-    results = await metadata_service.search(q.strip(), limit=limit)
-    return [_metadata_response(result) for result in results]
+    groups = await metadata_service.grouped_search(q.strip(), limit=limit)
+    return [_metadata_group_response(group) for group in groups]
 
 
 @app.get("/api/featured")
@@ -403,11 +412,10 @@ async def featured(request: Request, surface: str = "discover", limit: int = 10)
     results = []
     seen = set()
     for query in queries:
-        for result in await metadata_service.search(query, limit=3):
-            key = (result.source, result.source_id)
-            if key not in seen:
-                seen.add(key)
-                results.append(_metadata_response(result))
+        for group in await metadata_service.grouped_search(query, limit=3):
+            if group.group_id not in seen:
+                seen.add(group.group_id)
+                results.append(_metadata_group_response(group))
             if len(results) >= limit:
                 return results
     return results
@@ -420,7 +428,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
     if not ids:
         featured_results = await featured(request, surface="home", limit=limit)
         return [
-            {"id": f"{item['source']}:{item['source_id']}", "score": 0, "why": "Featured pick", **item}
+            {"id": item["id"], "score": 0, "why": "Featured pick", **item["primary"]}
             for item in featured_results
         ]
     placeholders = ",".join("?" for _ in ids)

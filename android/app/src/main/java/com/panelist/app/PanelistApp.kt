@@ -34,7 +34,7 @@ import com.panelist.app.ui.screens.LibraryScreen
 import com.panelist.app.ui.screens.ProfileScreen
 import com.panelist.app.ui.screens.MetadataDetailScreen
 import com.panelist.app.ui.screens.ServerConnectionScreen
-import com.panelist.app.data.model.MetadataResult
+import com.panelist.app.data.model.MetadataGroup
 import com.panelist.app.ui.theme.PanelistTheme
 import com.panelist.app.data.api.ApiFactory
 import com.panelist.app.data.repository.MetadataRepository
@@ -58,7 +58,7 @@ fun PanelistApp() {
     val context = LocalContext.current
     val sessionStore = remember { com.panelist.app.data.session.SessionStore(context) }
     var serverUrl by remember { mutableStateOf(sessionStore.serverUrl()) }
-    var selectedMetadata by remember { mutableStateOf<MetadataResult?>(null) }
+    var selectedMetadata by remember { mutableStateOf<MetadataGroup?>(null) }
     PanelistTheme {
         if (serverUrl == null) {
             ServerConnectionScreen(
@@ -119,18 +119,18 @@ fun PanelistApp() {
                 NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(pad)) {
                     composable("home") { HomeScreen(recommendationRepository) }
                     composable("discover") {
-                        DiscoverScreen(metadataRepository) { result ->
+                        DiscoverScreen(metadataRepository, sessionStore) { result ->
                             selectedMetadata = result
                             nav.navigate("metadata-detail")
                         }
                     }
                     composable("metadata-detail") {
                         selectedMetadata?.let { result ->
-                            MetadataDetailScreen(result) { nav.popBackStack() }
+                            MetadataDetailScreen(result, sessionStore) { nav.popBackStack() }
                         }
                     }
                     composable("library") { LibraryScreen(libraryRepository) }
-                    composable("profile") { ProfileScreen(profileRepository) }
+                    composable("profile") { ProfileScreen(profileRepository, sessionStore) }
                 }
             }
         }

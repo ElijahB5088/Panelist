@@ -16,6 +16,7 @@ def test_floppy_normalization():
             "progress": 42,
             "rating": 5,
             "media_id": "x1",
+            "media_type": "manga",
             "item": {
                 "title": "X",
                 "creator": "C",
@@ -35,8 +36,20 @@ def test_floppy_envelope_and_statuses():
 
     assert provider.fetch_library
     normalized = provider.normalize_library([
-        {"media_id": "x2", "status": 2, "progress": 100, "item": {"title": "Done"}},
-        {"media_id": "x3", "status": 5, "progress": 0, "item": {"title": "Queued"}},
+        {"media_id": "x2", "media_type": "comic", "status": 2, "progress": 100, "item": {"title": "Done"}},
+        {"media_id": "x3", "media_type": "manga", "status": 5, "progress": 0, "item": {"title": "Queued"}},
     ])
 
     assert [library["status"] for _, library in normalized] == ["completed", "planned"]
+
+
+def test_floppy_normalization_excludes_other_media_types():
+    provider = FloppyProvider()
+
+    normalized = provider.normalize_library([
+        {"media_id": "movie", "media_type": "movie", "item": {"title": "Film"}},
+        {"media_id": "show", "media_type": "tv", "item": {"title": "Series"}},
+        {"media_id": "comic", "media_type": "comics", "item": {"title": "Comic"}},
+    ])
+
+    assert [media.id for media, _ in normalized] == ["comic"]
