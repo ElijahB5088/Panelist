@@ -61,7 +61,8 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 - For HTTPS Floppy URLs, the certificate must be trusted by the Panelist
   container and match the hostname. A self-signed or private-CA certificate
   will fail TLS verification unless its CA is installed in the image.
-- To enable MyAnimeList, create an API client in MyAnimeList, set `MAL_CLIENT_ID`,
+- To enable MyAnimeList, create an API client in MyAnimeList, set `MAL_CLIENT_ID`
+  and `MAL_CLIENT_SECRET` when the client has a secret,
   and register the exact `MAL_REDIRECT_URI`. Choose `MAL manga` in the Android
   profile screen, complete authorization in the browser, then refresh the
   connection and sync.

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import secrets
 from dataclasses import dataclass
@@ -31,18 +29,24 @@ class MALProvider(TrackingProvider):
     def create_authorization(self, client_id: str, redirect_uri: str | None = None) -> OAuthState:
         state = secrets.token_urlsafe(32)
         code_verifier = secrets.token_urlsafe(64)
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).rstrip(b"=").decode()
         params = {
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": redirect_uri or self.redirect_uri,
             "state": state,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
+            "code_challenge": code_verifier,
+            "code_challenge_method": "plain",
         }
         return OAuthState(state, code_verifier, f"{self.authorization_url}?{urlencode(params)}")
 
-    async def exchange_code(self, client_id: str, code: str, code_verifier: str, redirect_uri: str | None = None) -> dict:
+    async def exchange_code(
+        self,
+        client_id: str,
+        code: str,
+        code_verifier: str,
+        redirect_uri: str | None = None,
+        client_secret: str = "",
+    ) -> dict:
         data = {
             "client_id": client_id,
             "code": code,
@@ -50,13 +54,17 @@ class MALProvider(TrackingProvider):
             "grant_type": "authorization_code",
             "redirect_uri": redirect_uri or self.redirect_uri,
         }
+        if client_secret:
+            data["client_secret"] = client_secret
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(self.token_url, data=data)
         response.raise_for_status()
         return response.json()
 
-    async def refresh_token(self, client_id: str, refresh_token: str) -> dict:
+    async def refresh_token(self, client_id: str, refresh_token: str, client_secret: str = "") -> dict:
         data = {"client_id": client_id, "refresh_token": refresh_token, "grant_type": "refresh_token"}
+        if client_secret:
+            data["client_secret"] = client_secret
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(self.token_url, data=data)
         response.raise_for_status()
@@ -143,8 +151,14 @@ class MALProvider(TrackingProvider):
         }.get(str(status or "plan_to_read").lower(), "planned")
 
 
-def encode_token_bundle(tokens: dict) -> str:
-    return json.dumps({"access_token": tokens["access_token"], "refresh_token": tokens.get("refresh_token"), "expires_in": tokens.get("expires_in")})
+def encode_token_bundle(tokens: dict, previous: dict | None = None) -> str:
+    return json.dumps(
+        {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens.get("refresh_token") or (previous or {}).get("refresh_token"),
+            "expires_in": tokens.get("expires_in"),
+        }
+    )
 
 
 def decode_token_bundle(value: str) -> dict:

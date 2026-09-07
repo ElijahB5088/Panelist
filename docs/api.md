@@ -33,8 +33,9 @@ Implemented endpoints:
 
 Authentication: bearer token issued by `/api/auth/login`.
 
-MAL integration uses server-managed OAuth with PKCE. Set `MAL_CLIENT_ID` and
-register `MAL_REDIRECT_URI` with MyAnimeList. The callback stores encrypted
+MAL integration uses server-managed OAuth with plain PKCE. Set `MAL_CLIENT_ID`,
+`MAL_CLIENT_SECRET` when provided by MyAnimeList, and register `MAL_REDIRECT_URI`.
+The callback stores encrypted
 access and refresh tokens; Panelist imports only the user's manga list.
 
 Kitsu sync uses the Kitsu API base URL (normally `https://kitsu.io`) and a

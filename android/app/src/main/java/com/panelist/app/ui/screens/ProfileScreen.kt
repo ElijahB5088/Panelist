@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +60,13 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
     }
 
     val tracker = profile?.connected_tracker
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         Text("Profile", style = MaterialTheme.typography.headlineLarge)
         Text(profile?.user?.username?.let { "Signed in as $it" } ?: "Your account and tracker connection", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
@@ -143,9 +150,11 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                         scope.launch {
                             busy = true
                             status = runCatching {
-                                activeRepository.sync()
-                                syncStatus = activeRepository.syncStatus().sync_status
-                                "Sync started."
+                                    activeRepository.sync()
+                                    val loaded = activeRepository.profile()
+                                    profile = loaded
+                                    syncStatus = loaded.connected_tracker?.sync_status
+                                    "Sync complete."
                             }.getOrElse { it.message ?: "Sync failed." }
                             busy = false
                         }

@@ -224,7 +224,13 @@ async def mal_callback(code: str | None = None, state: str | None = None, error:
     conn.execute("DELETE FROM mal_oauth_states WHERE state = ?", (state,))
     conn.commit()
     try:
-        tokens = await tracking_providers["mal"].exchange_code(settings.mal_client_id, code, row[1], settings.mal_redirect_uri)
+        tokens = await tracking_providers["mal"].exchange_code(
+            settings.mal_client_id,
+            code,
+            row[1],
+            settings.mal_redirect_uri,
+            settings.mal_client_secret,
+        )
         conn.execute(
             """
             INSERT INTO tracker_integrations (user_id, provider, server_url, encrypted_token, connected, sync_status)
@@ -355,16 +361,22 @@ async def sync(user=Depends(user_from_auth)):
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 401 or not token_bundle.get("refresh_token"):
                     raise
-                refreshed = await active_provider.refresh_token(settings.mal_client_id, token_bundle["refresh_token"])
+                refreshed = await active_provider.refresh_token(
+                    settings.mal_client_id,
+                    token_bundle["refresh_token"],
+                    settings.mal_client_secret,
+                )
                 conn.execute(
                     "UPDATE tracker_integrations SET encrypted_token=? WHERE user_id=?",
-                    (encrypt_secret(encode_token_bundle(refreshed)), user["id"]),
+                    (encrypt_secret(encode_token_bundle(refreshed, token_bundle)), user["id"]),
                 )
                 conn.commit()
                 payload = await active_provider.fetch_library(row[1], refreshed["access_token"])
         else:
             payload = await active_provider.fetch_library(row[1], credential)
         normalized = active_provider.normalize_library(payload)
+        if payload and not normalized:
+            raise ValueError("Tracker returned entries, but none were recognized as supported library media")
         conn.execute("DELETE FROM user_library WHERE user_id = ?", (user["id"],))
         for media, lib in normalized:
             conn.execute(

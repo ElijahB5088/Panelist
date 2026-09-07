@@ -5,9 +5,17 @@ def test_mal_authorization_uses_pkce():
     authorization = MALProvider().create_authorization("client", "https://panelist.example/callback")
 
     assert "code_challenge=" in authorization.authorization_url
-    assert "code_challenge_method=S256" in authorization.authorization_url
+    assert "code_challenge_method=plain" in authorization.authorization_url
     assert authorization.state
     assert authorization.code_verifier
+
+
+def test_mal_token_bundle_preserves_refresh_token():
+    from app.providers.mal import encode_token_bundle
+
+    assert '"refresh_token": "old-refresh"' in encode_token_bundle(
+        {"access_token": "new-access"}, {"refresh_token": "old-refresh"}
+    )
 
 
 def test_mal_normalization_maps_manga_list_status():

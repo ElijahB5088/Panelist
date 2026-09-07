@@ -53,3 +53,26 @@ def test_floppy_normalization_excludes_other_media_types():
     ])
 
     assert [media.id for media, _ in normalized] == ["comic"]
+
+
+def test_floppy_normalization_accepts_nested_type_and_data_fields():
+    provider = FloppyProvider()
+
+    normalized = provider.normalize_library([
+        {
+            "id": "entry-1",
+            "status": "reading",
+            "progress": 12,
+            "data": {
+                "id": "comic-1",
+                "type": "comic",
+                "title": "Nested Comic",
+            },
+        }
+    ])
+
+    assert len(normalized) == 1
+    media, library = normalized[0]
+    assert media.id == "comic-1"
+    assert media.title == "Nested Comic"
+    assert library["status"] == "reading"

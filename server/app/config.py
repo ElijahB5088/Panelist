@@ -18,6 +18,7 @@ class Settings:
     metadata_client_window_seconds = int(os.getenv("METADATA_CLIENT_WINDOW_SECONDS", "60"))
     metadata_client_max_requests = int(os.getenv("METADATA_CLIENT_MAX_REQUESTS", "30"))
     mal_client_id = os.getenv("MAL_CLIENT_ID", "")
+    mal_client_secret = os.getenv("MAL_CLIENT_SECRET", "")
     mal_redirect_uri = os.getenv("MAL_REDIRECT_URI", "http://localhost:8080/api/integrations/mal/callback")
 
 

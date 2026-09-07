@@ -31,20 +31,26 @@ class FloppyProvider(TrackingProvider):
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict):
-            return data.get("results", data.get("items", []))
+            for key in ("results", "items", "data"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return value
+            return []
         return data
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
         normalized: list[tuple[NormalizedMedia, dict]] = []
         for row in payload:
-            media = row.get("item") or row.get("media") or {}
+            media = row.get("item") or row.get("media") or row.get("data") or {}
             if not isinstance(media, dict):
                 media = {}
             media_type = str(
                 row.get("library_media_type")
                 or row.get("media_type")
+                or row.get("type")
                 or media.get("library_media_type")
                 or media.get("media_type")
+                or media.get("type")
                 or ""
             ).strip().lower()
             if media_type not in self.supported_media_types:
