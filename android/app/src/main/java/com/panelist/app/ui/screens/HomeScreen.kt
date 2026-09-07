@@ -43,6 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.SubcomposeAsyncImage
 import com.panelist.app.data.model.Recommendation
 import com.panelist.app.data.repository.RecommendationRepository
 import com.panelist.app.viewmodel.HomeViewModel
@@ -150,14 +152,32 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier) {
             Box(modifier = Modifier.fillMaxWidth().height(270.dp).background(accent), contentAlignment = Alignment.Center) {
                 Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
                 Text("COVER PREVIEW", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge)
+                SubcomposeAsyncImage(
+                    model = pick.image_url,
+                    contentDescription = "Cover for ${pick.title}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    alpha = 0.92f,
+                    error = { CoverFallback(pick, accent) },
+                    loading = { CoverFallback(pick, accent) }
+                )
             }
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(pick.title, style = MaterialTheme.typography.headlineSmall)
-                Text(pick.creator, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(pick.creator ?: "Creator unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Text(pick.genres.joinToString("  /  "), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(pick.why, style = MaterialTheme.typography.bodyLarge)
+                pick.source?.let { Text("Source: $it", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                pick.description?.let { Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 2) }
             }
         }
+    }
+}
+
+@Composable
+private fun CoverFallback(pick: Recommendation, accent: Color) {
+    Box(modifier = Modifier.fillMaxSize().background(accent), contentAlignment = Alignment.Center) {
+        Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
     }
 }
 

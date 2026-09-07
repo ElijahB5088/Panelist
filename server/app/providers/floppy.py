@@ -7,17 +7,26 @@ from .base import TrackingProvider
 
 
 class FloppyProvider(TrackingProvider):
+    connection_path = "/api/v1/user/preferences/"
+    library_path = "/api/v1/media/"
+
     async def test_connection(self, server_url: str, api_token: str) -> bool:
-        headers = {"Authorization": "Bearer " + api_token}
+        headers = {
+            "Authorization": "Bearer " + api_token,
+            "X-API-Key": api_token,
+        }
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{server_url.rstrip('/')}/api/me", headers=headers)
+            resp = await client.get(f"{server_url.rstrip('/')}{self.connection_path}", headers=headers)
         resp.raise_for_status()
         return resp.is_success
 
     async def fetch_library(self, server_url: str, api_token: str) -> list[dict]:
-        headers = {"Authorization": "Bearer " + api_token}
+        headers = {
+            "Authorization": "Bearer " + api_token,
+            "X-API-Key": api_token,
+        }
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{server_url.rstrip('/')}/api/library", headers=headers)
+            resp = await client.get(f"{server_url.rstrip('/')}{self.library_path}", headers=headers)
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict):

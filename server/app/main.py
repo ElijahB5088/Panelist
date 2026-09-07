@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from .db import get_conn, run_migrations
 from .config import settings
 from .metadata_service import MetadataRateLimitError, MetadataSearchService
-from .providers.metadata import AniListProvider, ComicVineProvider, OpenLibraryProvider
+from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider
 from .recommendation import build_recommendations
 from .security import (
@@ -26,6 +26,7 @@ run_migrations(conn)
 provider = FloppyProvider()
 metadata_providers = [
     ComicVineProvider(settings.comicvine_api_key, settings.metadata_user_agent),
+    MetronProvider(settings.metron_api_url, settings.metron_api_token, settings.metadata_user_agent),
     OpenLibraryProvider(settings.metadata_user_agent),
     AniListProvider(),
 ]
@@ -61,6 +62,22 @@ app = FastAPI(title="Panelist Server", version="0.1.0", lifespan=lifespan)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+def _metadata_response(result):
+    return {
+        "source": result.source,
+        "source_id": result.source_id,
+        "title": result.title,
+        "creator": result.creator,
+        "genres": result.genres or [],
+        "publisher": result.publisher,
+        "description": result.description,
+        "rating": result.rating,
+        "release_date": result.release_date,
+        "image_url": result.image_url,
+        "source_url": result.source_url,
+    }
 
 
 class Credentials(BaseModel):
@@ -369,33 +386,46 @@ async def metadata_search(request: Request, q: str, limit: int = 10):
     except MetadataRateLimitError as exc:
         raise HTTPException(429, "Metadata search rate limit exceeded") from exc
     results = await metadata_service.search(q.strip(), limit=limit)
-    return [
-        {
-            "source": result.source,
-            "source_id": result.source_id,
-            "title": result.title,
-            "creator": result.creator,
-            "genres": result.genres or [],
-            "publisher": result.publisher,
-            "description": result.description,
-            "rating": result.rating,
-            "release_date": result.release_date,
-            "image_url": result.image_url,
-            "source_url": result.source_url,
-        }
-        for result in results
-    ]
+    return [_metadata_response(result) for result in results]
+
+
+@app.get("/api/featured")
+async def featured(request: Request, surface: str = "discover", limit: int = 10):
+    if surface not in {"discover", "home"}:
+        raise HTTPException(400, "surface must be discover or home")
+    if limit < 1 or limit > 50:
+        raise HTTPException(400, "limit must be between 1 and 50")
+    try:
+        metadata_service.check_client_limit(request.client.host if request.client else "unknown")
+    except MetadataRateLimitError as exc:
+        raise HTTPException(429, "Metadata search rate limit exceeded") from exc
+    queries = ["Saga", "Monstress", "Descender", "The Sandman"] if surface == "discover" else ["Saga", "Monstress", "Descender"]
+    results = []
+    seen = set()
+    for query in queries:
+        for result in await metadata_service.search(query, limit=3):
+            key = (result.source, result.source_id)
+            if key not in seen:
+                seen.add(key)
+                results.append(_metadata_response(result))
+            if len(results) >= limit:
+                return results
+    return results
 
 
 @app.get("/api/recommendations")
-def recommendations(user=Depends(user_from_auth), limit: int = 20):
+async def recommendations(request: Request, user=Depends(user_from_auth), limit: int = 20):
     recs = build_recommendations(conn, user["id"], limit=limit)
     ids = [r.media_id for r in recs]
     if not ids:
-        return []
+        featured_results = await featured(request, surface="home", limit=limit)
+        return [
+            {"id": f"{item['source']}:{item['source_id']}", "score": 0, "why": "Featured pick", **item}
+            for item in featured_results
+        ]
     placeholders = ",".join("?" for _ in ids)
     rows = conn.execute(
-        f"SELECT id, title, creator, genres, rating, description FROM media WHERE id IN ({placeholders})",
+        f"SELECT id, title, creator, genres, rating, description, source, source_id, image_url, source_url FROM media WHERE id IN ({placeholders})",
         ids,
     ).fetchall()
     by_id = {r[0]: r for r in rows}
@@ -409,6 +439,10 @@ def recommendations(user=Depends(user_from_auth), limit: int = 20):
             "genres": by_id[rec.media_id][3].split(",") if by_id[rec.media_id][3] else [],
             "rating": by_id[rec.media_id][4],
             "description": by_id[rec.media_id][5],
+            "source": by_id[rec.media_id][6],
+            "source_id": by_id[rec.media_id][7],
+            "image_url": by_id[rec.media_id][8],
+            "source_url": by_id[rec.media_id][9],
         }
         for rec in recs
         if rec.media_id in by_id

@@ -23,6 +23,13 @@ def get_conn() -> sqlite3.Connection:
 
 
 def run_migrations(conn: sqlite3.Connection) -> None:
-    migration = Path(__file__).resolve().parents[1] / "migrations" / "001_init.sql"
-    conn.executescript(migration.read_text())
+    migrations_dir = Path(__file__).resolve().parents[1] / "migrations"
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)")
+    applied = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
+    for migration in sorted(migrations_dir.glob("*.sql")):
+        version = int(migration.stem.split("_", 1)[0])
+        if version in applied:
+            continue
+        conn.executescript(migration.read_text())
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", (version,))
     conn.commit()

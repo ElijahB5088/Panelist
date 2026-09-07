@@ -1,6 +1,13 @@
 from app.providers.floppy import FloppyProvider
 
 
+def test_floppy_api_paths():
+    provider = FloppyProvider()
+
+    assert provider.connection_path == "/api/v1/user/preferences/"
+    assert provider.library_path == "/api/v1/media/"
+
+
 def test_floppy_normalization():
     provider = FloppyProvider()
     payload = [

@@ -15,6 +15,7 @@ Implemented endpoints:
 - `GET /api/media/{id}`
 - `GET /api/search?q=...`
 - `GET /api/metadata/search?q=...&limit=10`
+- `GET /api/featured?surface=discover|home&limit=10`
 - `GET /api/library`
 - `GET /api/history`
 - `GET /api/ratings`
@@ -31,6 +32,11 @@ then Open Library and AniList. Results include `source`, `source_id`, `image_url
 and `source_url` for attribution. Requests are made by the server, and provider
 failures are isolated so an unavailable source does not fail the whole search.
 
+Metron is an optional comic-series provider. Configure `METRON_API_TOKEN` with a
+read-only Metron API token. `METRON_API_URL` overrides the default
+`https://metron.cloud/api`. Metron is skipped when no token is configured, and
+provider failures remain isolated.
+
 Comic Vine requires an API key. Open Library asks clients to identify themselves
 with `METADATA_USER_AGENT` and to cache requests; AniList is used for manga
 coverage. Configure a contact address in the user agent for deployed instances.
@@ -38,3 +44,12 @@ The server caches normalized searches for 15 minutes by default, caps the cache
 at 256 queries, spaces upstream requests by one second, and limits each client
 to 30 searches per 60 seconds. These values can be changed with the
 `METADATA_*` environment variables.
+
+`GET /api/featured?surface=discover|home&limit=10` returns curated, source-backed
+presets assembled from configured metadata providers. It never returns local
+demo records. When providers return no results, clients receive an empty list
+or show their error state.
+
+`GET /api/recommendations` includes `source`, `source_id`, `image_url`, and
+`source_url` when provenance is available. Users without personalized results
+receive source-backed featured picks with `why: "Featured pick"`.

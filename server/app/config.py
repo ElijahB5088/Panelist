@@ -9,6 +9,8 @@ class Settings:
     sync_interval_minutes = int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))
     credential_encryption_key = os.getenv("CREDENTIAL_ENCRYPTION_KEY", "")
     comicvine_api_key = os.getenv("COMICVINE_API_KEY", "")
+    metron_api_url = os.getenv("METRON_API_URL", "https://metron.cloud/api")
+    metron_api_token = os.getenv("METRON_API_TOKEN", "")
     metadata_user_agent = os.getenv("METADATA_USER_AGENT", "Panelist/0.1 (self-hosted)")
     metadata_cache_ttl_seconds = int(os.getenv("METADATA_CACHE_TTL_SECONDS", "900"))
     metadata_cache_max_entries = int(os.getenv("METADATA_CACHE_MAX_ENTRIES", "256"))

@@ -59,6 +59,42 @@ class ComicVineProvider(MetadataProvider):
         )
 
 
+class MetronProvider(MetadataProvider):
+    name = "metron"
+
+    def __init__(self, api_url: str, token: str, user_agent: str = "Panelist/0.1"):
+        self.api_url = api_url.rstrip("/")
+        self.token = token
+        self.user_agent = user_agent
+
+    async def search(self, query: str, limit: int = 10) -> list[MetadataResult]:
+        if not self.token:
+            return []
+        headers = {"Authorization": f"Bearer {self.token}", "User-Agent": self.user_agent}
+        params = {"q": query, "page_size": min(limit, 100)}
+        async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+            response = await client.get(f"{self.api_url}/series/", params=params)
+        response.raise_for_status()
+        payload = response.json()
+        return [self._normalize(row) for row in payload.get("results", [])[:limit]]
+
+    def _normalize(self, row: dict) -> MetadataResult:
+        publisher = row.get("publisher") or {}
+        year = row.get("year_began")
+        source_id = str(row.get("id"))
+        return MetadataResult(
+            source=self.name,
+            source_id=source_id,
+            title=row.get("series") or row.get("name") or "Untitled",
+            genres=[genre.get("name", genre) for genre in row.get("genres", []) if genre],
+            publisher=publisher.get("name"),
+            description=row.get("desc"),
+            release_date=f"{year}-01-01" if year else None,
+            image_url=row.get("image"),
+            source_url=row.get("resource_url") or f"https://metron.cloud/series/{source_id}/",
+        )
+
+
 class OpenLibraryProvider(MetadataProvider):
     name = "openlibrary"
     base_url = "https://openlibrary.org/search.json"

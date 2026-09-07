@@ -43,6 +43,12 @@ interface PanelistApi {
         @Query("limit") limit: Int = 10
     ): List<MetadataResult>
 
+    @GET("/api/featured")
+    suspend fun featured(
+        @Query("surface") surface: String,
+        @Query("limit") limit: Int = 10
+    ): List<MetadataResult>
+
     @GET("/api/library")
     suspend fun library(@Query("status") status: String? = null): List<LibraryItem>
 

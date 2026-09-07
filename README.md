@@ -13,25 +13,6 @@ Panelist is a privacy-first Android recommendation app + self-hostable backend f
 └── .env.example
 ```
 
-## Architecture
-
-```mermaid
-flowchart LR
-  Android[Android app\nKotlin + Compose] -->|REST / JSON| API[Panelist server\nFastAPI]
-
-  API --> Auth[Auth and sessions]
-  API --> Library[Library, history, ratings]
-  API --> Recs[Local recommendation engine]
-  API --> Metadata[Metadata search service]
-  API --> DB[(SQLite by default\nPostgreSQL optional)]
-
-  Library -->|sync| Floppy[Floppy server]
-  API -->|encrypted token| DB
-  Metadata --> ComicVine[Comic Vine]
-  Metadata --> OpenLibrary[Open Library]
-  Metadata --> AniList[AniList]
-```
-
 ## Quick start (self-hosted backend)
 
 1. Copy environment file:

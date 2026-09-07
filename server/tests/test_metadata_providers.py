@@ -1,4 +1,4 @@
-from app.providers.metadata import AniListProvider, ComicVineProvider, OpenLibraryProvider
+from app.providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
 
 
 def test_comicvine_volume_normalization():
@@ -58,3 +58,25 @@ def test_anilist_normalization():
     assert result.creator == "A. Mangaka"
     assert result.rating == 8.4
     assert result.release_date == "2021-4-2"
+
+
+def test_metron_series_normalization():
+    result = MetronProvider("https://metron.example/api", "token")._normalize(
+        {
+            "id": 42,
+            "series": "Saga",
+            "year_began": 2012,
+            "publisher": {"name": "Image"},
+            "genres": [{"name": "Science Fiction"}],
+            "desc": "A family in space.",
+            "image": "https://images.example/saga.jpg",
+            "resource_url": "https://metron.example/series/42/",
+        }
+    )
+
+    assert result.source == "metron"
+    assert result.source_id == "42"
+    assert result.publisher == "Image"
+    assert result.genres == ["Science Fiction"]
+    assert result.release_date == "2012-01-01"
+    assert result.image_url.endswith("saga.jpg")
