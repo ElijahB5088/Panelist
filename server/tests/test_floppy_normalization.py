@@ -167,3 +167,52 @@ def test_floppy_normalization_accepts_nested_type_and_data_fields():
     assert media.id == "comic-1"
     assert media.title == "Nested Comic"
     assert library["status"] == "reading"
+
+
+def test_floppy_normalization_maps_real_manga_row_shape():
+    normalized = FloppyProvider().normalize_library([
+        {
+            "item_id": "manga/mal/90160",
+            "status": 1,
+            "progress": 3209,
+            "progress_unit": "chapters",
+            "progress_scope": "entry",
+            "score": 7,
+            "item": {
+                "media_id": "90160",
+                "source": "mal",
+                "library_media_type": "manga",
+                "title": "Zui Wu Dao",
+                "authors": [{"first_name": "Wu", "last_name": "Dao"}],
+                "genres": ["Adventure"],
+                "synopsis": "A martial arts story.",
+                "provider_rating": 7.2,
+            },
+        }
+    ])
+
+    media, library = normalized[0]
+    assert media.id == "floppy:mal:90160"
+    assert media.title == "Zui Wu Dao"
+    assert media.creator == "Wu Dao"
+    assert media.source == "mal"
+    assert media.source_id == "90160"
+    assert media.media_type == "manga"
+    assert library["progress"] == 3209
+    assert library["progress_unit"] == "chapters"
+    assert library["progress_percent"] is None
+
+
+def test_floppy_completed_row_has_full_progress_percent():
+    normalized = FloppyProvider().normalize_library([
+        {
+            "status": 2,
+            "progress": 12,
+            "max_progress": 100,
+            "media_type": "comic",
+            "media_id": "done",
+            "item": {"title": "Done"},
+        }
+    ])
+
+    assert normalized[0][1]["progress_percent"] == 100

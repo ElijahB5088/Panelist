@@ -31,10 +31,12 @@ import com.panelist.app.ui.screens.DiscoverScreen
 import com.panelist.app.ui.screens.AuthScreen
 import com.panelist.app.ui.screens.HomeScreen
 import com.panelist.app.ui.screens.LibraryScreen
+import com.panelist.app.ui.screens.LibraryDetailScreen
 import com.panelist.app.ui.screens.ProfileScreen
 import com.panelist.app.ui.screens.MetadataDetailScreen
 import com.panelist.app.ui.screens.ServerConnectionScreen
 import com.panelist.app.data.model.MetadataGroup
+import com.panelist.app.data.model.LibraryItem
 import com.panelist.app.ui.theme.PanelistTheme
 import com.panelist.app.data.api.ApiFactory
 import com.panelist.app.data.repository.MetadataRepository
@@ -59,6 +61,7 @@ fun PanelistApp() {
     val sessionStore = remember { com.panelist.app.data.session.SessionStore(context) }
     var serverUrl by remember { mutableStateOf(sessionStore.serverUrl()) }
     var selectedMetadata by remember { mutableStateOf<MetadataGroup?>(null) }
+    var selectedLibraryItem by remember { mutableStateOf<LibraryItem?>(null) }
     PanelistTheme {
         if (serverUrl == null) {
             ServerConnectionScreen(
@@ -129,7 +132,15 @@ fun PanelistApp() {
                             MetadataDetailScreen(result, sessionStore) { nav.popBackStack() }
                         }
                     }
-                    composable("library") { LibraryScreen(libraryRepository) }
+                    composable("library") {
+                        LibraryScreen(libraryRepository) {
+                            selectedLibraryItem = it
+                            nav.navigate("library-detail")
+                        }
+                    }
+                    composable("library-detail") {
+                        selectedLibraryItem?.let { LibraryDetailScreen(it) { nav.popBackStack() } }
+                    }
                     composable("profile") { ProfileScreen(profileRepository, sessionStore) }
                 }
             }

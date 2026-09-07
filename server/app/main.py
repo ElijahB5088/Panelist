@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-import httpx
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from html import escape
+import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -66,6 +65,103 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Panelist Server", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/")
+def root() -> HTMLResponse:
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Panelist</title>
+            <style>
+                :root {
+                    color-scheme: light dark;
+                    --bg: #0f172a;
+                    --panel: #111827;
+                    --panel-border: #334155;
+                    --text: #e2e8f0;
+                    --muted: #cbd5e1;
+                    --accent: #7dd3fc;
+                    --accent-strong: #38bdf8;
+                }
+                * { box-sizing: border-box; }
+                body {
+                    margin: 0;
+                    font-family: Arial, Helvetica, sans-serif;
+                    background: linear-gradient(180deg, #020817 0%, #0f172a 100%);
+                    color: var(--text);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 32px;
+                }
+                main {
+                    width: min(760px, 100%);
+                    background: rgba(15, 23, 42, 0.9);
+                    border: 1px solid var(--panel-border);
+                    border-radius: 18px;
+                    padding: 32px;
+                    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.45);
+                }
+                h1 {
+                    margin: 0 0 12px;
+                    font-size: clamp(2rem, 4vw, 3rem);
+                }
+                p {
+                    color: var(--muted);
+                    line-height: 1.6;
+                    margin: 0 0 16px;
+                    font-size: 1.05rem;
+                }
+                .links {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    margin-top: 24px;
+                }
+                a {
+                    display: inline-block;
+                    background: var(--accent);
+                    color: #082f49;
+                    text-decoration: none;
+                    padding: 10px 16px;
+                    border-radius: 10px;
+                    font-weight: 700;
+                }
+                a.secondary {
+                    background: transparent;
+                    color: var(--accent);
+                    border: 1px solid var(--panel-border);
+                }
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>Panelist</h1>
+                <p>
+                    Panelist is a privacy-first Android recommendation app and self-hosted backend for comics,
+                    manga, and graphic novels.
+                </p>
+                <p>
+                    Track reading activity, discover personalized recommendations, and sync your library through
+                    the Panelist API while keeping your tracker credentials encrypted at rest.
+                </p>
+                <div class="links">
+                    <a href="/docs">Open API docs</a>
+                    <a class="secondary" href="/redoc">ReDoc</a>
+                    <a class="secondary" href="/openapi.json">OpenAPI schema</a>
+                    <a class="secondary" href="/health">Health</a>
+                </div>
+            </main>
+        </body>
+        </html>
+        """
+    )
 
 
 @app.get("/health")
@@ -381,11 +477,14 @@ async def sync(user=Depends(user_from_auth)):
         for media, lib in normalized:
             conn.execute(
                 """
-                INSERT INTO media (id, title, creator, genres, publisher, description, rating)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, tracker_source, tracker_media_id, tracker_item_id)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   title=excluded.title, creator=excluded.creator, genres=excluded.genres,
-                  publisher=excluded.publisher, description=excluded.description, rating=excluded.rating
+                                    publisher=excluded.publisher, description=excluded.description, rating=excluded.rating,
+                                    source=excluded.source, source_id=excluded.source_id, media_type=excluded.media_type,
+                                    tracker_source=excluded.tracker_source, tracker_media_id=excluded.tracker_media_id,
+                                    tracker_item_id=excluded.tracker_item_id
                 """,
                 (
                     media.id,
@@ -395,16 +494,28 @@ async def sync(user=Depends(user_from_auth)):
                     media.publisher,
                     media.description,
                     media.rating,
+                    media.source,
+                    media.source_id,
+                    media.media_type,
+                    lib.get("tracker_source"),
+                    lib.get("tracker_media_id"),
+                    lib.get("tracker_item_id"),
                 ),
             )
             conn.execute(
                 """
-                INSERT INTO user_library (user_id, media_id, status, progress, user_rating)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, media_id) DO UPDATE SET
-                  status=excluded.status, progress=excluded.progress, user_rating=excluded.user_rating
+                  status=excluded.status, progress=excluded.progress, user_rating=excluded.user_rating,
+                  progress_max=excluded.progress_max, progress_unit=excluded.progress_unit,
+                  progress_scope=excluded.progress_scope, progress_percent=excluded.progress_percent
                 """,
-                (user["id"], media.id, lib["status"], lib["progress"], lib["user_rating"]),
+                (
+                    user["id"], media.id, lib["status"], lib["progress"], lib["user_rating"],
+                    lib.get("progress_max"), lib.get("progress_unit"),
+                    lib.get("progress_scope"), lib.get("progress_percent"),
+                ),
             )
 
         conn.execute(
@@ -439,7 +550,10 @@ def sync_status(user=Depends(user_from_auth)):
 @app.get("/api/library")
 def library(user=Depends(user_from_auth), status: str | None = None):
     query = """
-      SELECT ul.media_id, ul.status, ul.progress, ul.user_rating, m.title, m.creator, m.genres, m.rating
+            SELECT ul.media_id, ul.status, ul.progress, ul.progress_max, ul.progress_unit,
+                         ul.progress_scope, ul.progress_percent, ul.user_rating, m.title, m.creator,
+                         m.genres, m.rating, m.source, m.source_id, m.media_type,
+                         m.tracker_source, m.tracker_media_id, m.tracker_item_id
       FROM user_library ul
       JOIN media m ON m.id = ul.media_id
       WHERE ul.user_id = ?
@@ -454,11 +568,21 @@ def library(user=Depends(user_from_auth), status: str | None = None):
             "id": r[0],
             "status": r[1],
             "progress": r[2],
-            "user_rating": r[3],
-            "title": r[4],
-            "creator": r[5],
-            "genres": r[6].split(",") if r[6] else [],
-            "rating": r[7],
+            "progress_max": r[3],
+            "progress_unit": r[4],
+            "progress_scope": r[5],
+            "progress_percent": r[6],
+            "user_rating": r[7],
+            "title": r[8],
+            "creator": r[9],
+            "genres": r[10].split(",") if r[10] else [],
+            "rating": r[11],
+            "source": r[12],
+            "source_id": r[13],
+            "library_media_type": r[14],
+            "tracker_source": r[15],
+            "tracker_media_id": r[16],
+            "tracker_item_id": r[17],
         }
         for r in rows
     ]
@@ -503,13 +627,13 @@ def media_list(query: str | None = None):
 @app.get("/api/media/{media_id}")
 def media_by_id(media_id: str, user=Depends(user_from_auth)):
     row = conn.execute(
-        "SELECT id, title, creator, genres, publisher, description, rating, release_date FROM media WHERE id = ?",
+        "SELECT id, title, creator, genres, publisher, description, rating, release_date, source, source_id, media_type, tracker_source, tracker_media_id, tracker_item_id FROM media WHERE id = ?",
         (media_id,),
     ).fetchone()
     if not row:
         raise HTTPException(404, "Media not found")
     user_state = conn.execute(
-        "SELECT status, progress, user_rating FROM user_library WHERE user_id = ? AND media_id = ?",
+        "SELECT status, progress, progress_max, progress_unit, progress_scope, progress_percent, user_rating FROM user_library WHERE user_id = ? AND media_id = ?",
         (user["id"], media_id),
     ).fetchone()
     return {
@@ -521,10 +645,20 @@ def media_by_id(media_id: str, user=Depends(user_from_auth)):
         "description": row[5],
         "rating": row[6],
         "release_date": row[7],
+        "source": row[8],
+        "source_id": row[9],
+        "library_media_type": row[10],
+        "tracker_source": row[11],
+        "tracker_media_id": row[12],
+        "tracker_item_id": row[13],
         "user_state": {
             "status": user_state[0],
             "progress": user_state[1],
-            "rating": user_state[2],
+            "progress_max": user_state[2],
+            "progress_unit": user_state[3],
+            "progress_scope": user_state[4],
+            "progress_percent": user_state[5],
+            "rating": user_state[6],
         }
         if user_state
         else None,

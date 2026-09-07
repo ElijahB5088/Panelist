@@ -2,11 +2,18 @@ package com.panelist.app.data.model
 
 data class LibraryItem(
     val id: String,
+    val media_id: String? = null,
+    val source: String? = null,
+    val library_media_type: String? = null,
     val status: String?,
     val progress: Int?,
+    val progress_max: Int? = null,
+    val progress_unit: String? = null,
+    val progress_scope: String? = null,
+    val progress_percent: Int? = null,
     val user_rating: Double?,
     val title: String,
-    val creator: String,
+    val creator: String? = null,
     val genres: List<String>,
     val rating: Double?
 )

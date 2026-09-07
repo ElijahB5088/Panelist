@@ -42,9 +42,11 @@ To build the server image locally for development instead:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-3. Open API docs:
+3. Open the server homepage or API docs:
 
-- `http://localhost:8080/docs`
+- `http://localhost:8080/` for the Panelist landing page
+- `http://localhost:8080/docs` for Swagger UI
+- `http://localhost:8080/redoc` for ReDoc
 
 ## Backend notes
 

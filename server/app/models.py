@@ -7,11 +7,14 @@ from dataclasses import dataclass
 class NormalizedMedia:
     id: str
     title: str
-    creator: str
+    creator: str | None
     genres: list[str]
     publisher: str | None = None
     description: str | None = None
     rating: float | None = None
+    source: str | None = None
+    source_id: str | None = None
+    media_type: str | None = None
 
 
 @dataclass

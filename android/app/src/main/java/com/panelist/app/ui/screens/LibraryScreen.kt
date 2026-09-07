@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,7 +27,7 @@ import com.panelist.app.data.model.LibraryItem
 import com.panelist.app.data.repository.LibraryRepository
 
 @Composable
-fun LibraryScreen(repository: LibraryRepository? = null) {
+fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryItem) -> Unit = {}) {
     val statuses = listOf("all", "reading", "completed", "planned", "dropped", "rated")
     var selectedStatus by remember { mutableStateOf(statuses.first()) }
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
@@ -56,20 +57,37 @@ fun LibraryScreen(repository: LibraryRepository? = null) {
             error != null -> Text(error!!, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
             items.isEmpty() -> EmptyLibraryStatus(selectedStatus)
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(items, key = { it.id }) { LibraryRow(it) }
+                items(items, key = { it.id }) { LibraryRow(it, onOpenItem) }
             }
         }
     }
 }
 
 @Composable
-private fun LibraryRow(item: LibraryItem) {
-    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
+    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().clickable { onOpenItem(item) }) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.title, style = MaterialTheme.typography.titleMedium)
-            Text(item.creator, color = MaterialTheme.colorScheme.primary)
-            Text("${item.progress ?: 0}% progress  /  ${item.user_rating?.let { "Your rating ${"%.1f".format(it)}" } ?: "Not rated"}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(item.creator ?: "Creator unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val progressLabel = item.progress_percent?.let { "$it% progress" }
+                ?: item.progress?.let { "${"%,d".format(it)} ${item.progress_unit ?: "items"}" }
+                ?: "Progress unavailable"
+            Text("$progressLabel  /  ${item.user_rating?.let { "Your rating ${"%.1f".format(it)}" } ?: "Not rated"}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+fun LibraryDetailScreen(item: LibraryItem, onBack: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("Back", modifier = Modifier.clickable(onClick = onBack), color = MaterialTheme.colorScheme.primary)
+        Text(item.title, style = MaterialTheme.typography.headlineLarge)
+        item.creator?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item.rating?.let { Text("Rating ${"%.1f".format(it)} / 10") }
+        item.progress_percent?.let { Text("Progress $it%") }
+            ?: item.progress?.let { Text("Progress ${"%,d".format(it)} ${item.progress_unit ?: "items"}") }
+        Text("${item.source ?: "Unknown source"} / ${item.library_media_type ?: "media"} / ${item.media_id ?: item.id}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item.genres.takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("  / ")) }
     }
 }
 

@@ -91,22 +91,70 @@ class FloppyProvider(TrackingProvider):
             if media_type not in self.supported_media_types:
                 continue
             status = self._normalize_status(row.get("status"))
+            source = str(row.get("source") or media.get("source") or "").strip() or None
+            source_id = str(
+                row.get("media_id")
+                or media.get("media_id")
+                or media.get("id")
+                or row.get("item_id")
+                or row.get("id")
+            )
+            creator = self._creator(media.get("authors") or media.get("creators"))
+            creator = creator or media.get("creator") or row.get("creator")
+            local_id = f"floppy:{source}:{source_id}" if source else source_id
+            progress = int(row.get("progress", 0) or 0)
+            progress_max = row.get("max_progress") or media.get("max_progress")
+            try:
+                progress_max = int(progress_max) if progress_max is not None else None
+            except (TypeError, ValueError):
+                progress_max = None
+            progress_percent = None
+            if status == "completed":
+                progress_percent = 100
+            elif progress_max and progress_max > 0:
+                progress_percent = min(100, max(0, round(progress / progress_max * 100)))
             normalized_media = NormalizedMedia(
-                id=str(row.get("media_id") or media.get("media_id") or media.get("id") or row.get("id")),
+                id=local_id,
                 title=media.get("title") or row.get("title") or "Unknown",
-                creator=media.get("creator") or row.get("creator") or row.get("source") or "Unknown",
+                creator=creator,
                 genres=media.get("genres", row.get("genres", [])) or [],
                 publisher=media.get("publisher"),
                 description=media.get("description") or media.get("synopsis"),
-                rating=media.get("rating") or media.get("score"),
+                rating=media.get("rating") or media.get("provider_rating") or media.get("score"),
+                source=source,
+                source_id=source_id,
+                media_type=media_type,
             )
             lib = {
                 "status": status,
-                "progress": int(row.get("progress", 0) or 0),
+                "progress": progress,
+                "progress_max": progress_max,
+                "progress_unit": row.get("progress_unit") or media.get("progress_unit"),
+                "progress_scope": row.get("progress_scope") or media.get("progress_scope"),
+                "progress_percent": progress_percent,
+                "tracker_source": source,
+                "tracker_media_id": source_id,
+                "tracker_item_id": row.get("item_id"),
                 "user_rating": row.get("score") or row.get("rating"),
             }
             normalized.append((normalized_media, lib))
         return normalized
+
+    @staticmethod
+    def _creator(value: object) -> str | None:
+        if not isinstance(value, list):
+            return None
+        names = []
+        for person in value:
+            if isinstance(person, str) and person.strip():
+                names.append(person.strip())
+            elif isinstance(person, dict):
+                name = person.get("name") or " ".join(
+                    filter(None, [person.get("first_name"), person.get("last_name")])
+                )
+                if name:
+                    names.append(str(name).strip())
+        return ", ".join(names) or None
 
     @staticmethod
     def _normalize_status(status: object) -> str:
