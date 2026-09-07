@@ -15,6 +15,8 @@ class NormalizedMedia:
     source: str | None = None
     source_id: str | None = None
     media_type: str | None = None
+    image_url: str | None = None
+    source_url: str | None = None
 
 
 @dataclass

@@ -16,6 +16,21 @@ def _normalize(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
+def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
+    return {
+        _normalize(row[0])
+        for row in conn.execute(
+            """
+            SELECT m.title
+            FROM user_library ul
+            JOIN media m ON m.id = ul.media_id
+            WHERE ul.user_id = ?
+            """,
+            (user_id,),
+        ).fetchall()
+    }
+
+
 def build_recommendations(conn: sqlite3.Connection, user_id: int, limit: int = 20) -> list[RecommendationResult]:
     library = conn.execute(
         """
@@ -27,13 +42,8 @@ def build_recommendations(conn: sqlite3.Connection, user_id: int, limit: int = 2
         (user_id,),
     ).fetchall()
 
-    already = {
-        row[0]
-        for row in conn.execute(
-            "SELECT media_id FROM user_library WHERE user_id = ?",
-            (user_id,),
-        ).fetchall()
-    }
+    already = {row[0] for row in conn.execute("SELECT media_id FROM user_library WHERE user_id = ?", (user_id,)).fetchall()}
+    already_titles = {_normalize(row[0]) for row in library}
 
     dismissed = {
         row[0]
@@ -95,7 +105,7 @@ def build_recommendations(conn: sqlite3.Connection, user_id: int, limit: int = 2
     candidates = conn.execute("SELECT id, title, creator, genres, rating FROM media").fetchall()
     scored: list[RecommendationResult] = []
     for mid, title, creator, genres, rating in candidates:
-        if mid in already or mid in dismissed:
+        if mid in already or _normalize(title) in already_titles or mid in dismissed:
             continue
         normalized_creator = _normalize(creator)
         genre_score = sum(positive_genres.get(g, 0.0) for g in _split_csv(genres))

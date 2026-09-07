@@ -15,7 +15,7 @@ from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvid
 from .providers.floppy import FloppyProvider, FloppyProviderError
 from .providers.kitsu import KitsuProvider
 from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
-from .recommendation import build_recommendations
+from .recommendation import _normalize, build_recommendations, library_title_keys
 from .security import (
     decrypt_secret,
     encrypt_secret,
@@ -477,12 +477,14 @@ async def sync(user=Depends(user_from_auth)):
         for media, lib in normalized:
             conn.execute(
                 """
-                                INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, tracker_source, tracker_media_id, tracker_item_id)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, image_url, source_url, tracker_source, tracker_media_id, tracker_item_id)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   title=excluded.title, creator=excluded.creator, genres=excluded.genres,
                                     publisher=excluded.publisher, description=excluded.description, rating=excluded.rating,
                                     source=excluded.source, source_id=excluded.source_id, media_type=excluded.media_type,
+                                    image_url=COALESCE(excluded.image_url, media.image_url),
+                                    source_url=COALESCE(excluded.source_url, media.source_url),
                                     tracker_source=excluded.tracker_source, tracker_media_id=excluded.tracker_media_id,
                                     tracker_item_id=excluded.tracker_item_id
                 """,
@@ -497,6 +499,8 @@ async def sync(user=Depends(user_from_auth)):
                     media.source,
                     media.source_id,
                     media.media_type,
+                    media.image_url,
+                    media.source_url,
                     lib.get("tracker_source"),
                     lib.get("tracker_media_id"),
                     lib.get("tracker_item_id"),
@@ -552,14 +556,16 @@ def library(user=Depends(user_from_auth), status: str | None = None):
     query = """
             SELECT ul.media_id, ul.status, ul.progress, ul.progress_max, ul.progress_unit,
                          ul.progress_scope, ul.progress_percent, ul.user_rating, m.title, m.creator,
-                         m.genres, m.rating, m.source, m.source_id, m.media_type,
+                         m.genres, m.rating, m.source, m.source_id, m.media_type, m.image_url, m.source_url,
                          m.tracker_source, m.tracker_media_id, m.tracker_item_id
       FROM user_library ul
       JOIN media m ON m.id = ul.media_id
       WHERE ul.user_id = ?
     """
     params: list[object] = [user["id"]]
-    if status:
+    if status == "rated":
+        query += " AND ul.user_rating IS NOT NULL"
+    elif status:
         query += " AND ul.status = ?"
         params.append(status)
     rows = conn.execute(query, params).fetchall()
@@ -580,9 +586,11 @@ def library(user=Depends(user_from_auth), status: str | None = None):
             "source": r[12],
             "source_id": r[13],
             "library_media_type": r[14],
-            "tracker_source": r[15],
-            "tracker_media_id": r[16],
-            "tracker_item_id": r[17],
+            "image_url": r[15],
+            "source_url": r[16],
+            "tracker_source": r[17],
+            "tracker_media_id": r[18],
+            "tracker_item_id": r[19],
         }
         for r in rows
     ]
@@ -684,8 +692,7 @@ async def metadata_search(request: Request, q: str, limit: int = 10):
     return [_metadata_group_response(group) for group in groups]
 
 
-@app.get("/api/featured")
-async def featured(request: Request, surface: str = "discover", limit: int = 10):
+async def _featured(request: Request, surface: str = "discover", limit: int = 10, excluded_titles: set[str] | None = None):
     if surface not in {"discover", "home"}:
         raise HTTPException(400, "surface must be discover or home")
     if limit < 1 or limit > 50:
@@ -701,10 +708,18 @@ async def featured(request: Request, surface: str = "discover", limit: int = 10)
         for group in await metadata_service.grouped_search(query, limit=3):
             if group.group_id not in seen:
                 seen.add(group.group_id)
-                results.append(_metadata_group_response(group))
+                item = _metadata_group_response(group)
+                if excluded_titles and _normalize(item["primary"]["title"]) in excluded_titles:
+                    continue
+                results.append(item)
             if len(results) >= limit:
                 return results
     return results
+
+
+@app.get("/api/featured")
+async def featured(request: Request, surface: str = "discover", limit: int = 10):
+    return await _featured(request, surface=surface, limit=limit)
 
 
 @app.get("/api/recommendations")
@@ -712,7 +727,12 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
     recs = build_recommendations(conn, user["id"], limit=limit)
     ids = [r.media_id for r in recs]
     if not ids:
-        featured_results = await featured(request, surface="home", limit=limit)
+        featured_results = await _featured(
+            request,
+            surface="home",
+            limit=limit,
+            excluded_titles=library_title_keys(conn, user["id"]),
+        )
         return [
             {"id": item["id"], "score": 0, "why": "Featured pick", **item["primary"]}
             for item in featured_results

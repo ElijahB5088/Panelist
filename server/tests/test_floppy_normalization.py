@@ -63,11 +63,36 @@ def test_floppy_envelope_and_statuses():
 
     assert provider.fetch_library
     normalized = provider.normalize_library([
-        {"media_id": "x2", "media_type": "comic", "status": 2, "progress": 100, "item": {"title": "Done"}},
+        {"media_id": "x2", "media_type": "comic", "status": 3, "progress": 100, "item": {"title": "Done"}},
         {"media_id": "x3", "media_type": "manga", "status": 5, "progress": 0, "item": {"title": "Queued"}},
     ])
 
     assert [library["status"] for _, library in normalized] == ["completed", "planned"]
+
+
+def test_floppy_completed_payload_keeps_cover_and_rating():
+    media, library = FloppyProvider().normalize_library([
+        {
+            "status": 3,
+            "score": 8.9,
+            "progress": 1,
+            "item_id": "comic/comicvine/139922",
+            "item": {
+                "media_id": "139922",
+                "media_type": "comic",
+                "library_media_type": "comic",
+                "source": "comicvine",
+                "title": "The Human Target",
+                "image": "https://comicvine.gamespot.com/a/uploads/scale_medium/6/67663/8227890-01.jpg",
+                "source_url": "",
+            },
+        }
+    ])[0]
+
+    assert media.image_url == "https://comicvine.gamespot.com/a/uploads/scale_medium/6/67663/8227890-01.jpg"
+    assert media.source_url is None
+    assert library["status"] == "completed"
+    assert library["user_rating"] == 8.9
 
 
 def test_floppy_fetch_library_accepts_supported_envelopes(monkeypatch):
@@ -206,7 +231,7 @@ def test_floppy_normalization_maps_real_manga_row_shape():
 def test_floppy_completed_row_has_full_progress_percent():
     normalized = FloppyProvider().normalize_library([
         {
-            "status": 2,
+            "status": 3,
             "progress": 12,
             "max_progress": 100,
             "media_type": "comic",

@@ -15,7 +15,9 @@ data class LibraryItem(
     val title: String,
     val creator: String? = null,
     val genres: List<String>,
-    val rating: Double?
+    val rating: Double?,
+    val image_url: String? = null,
+    val source_url: String? = null
 )
 
 data class ProfileResponse(

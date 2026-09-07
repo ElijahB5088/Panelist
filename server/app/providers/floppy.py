@@ -124,6 +124,8 @@ class FloppyProvider(TrackingProvider):
                 source=source,
                 source_id=source_id,
                 media_type=media_type,
+                image_url=media.get("image") or row.get("image"),
+                source_url=media.get("source_url") or row.get("source_url") or None,
             )
             lib = {
                 "status": status,
@@ -135,7 +137,7 @@ class FloppyProvider(TrackingProvider):
                 "tracker_source": source,
                 "tracker_media_id": source_id,
                 "tracker_item_id": row.get("item_id"),
-                "user_rating": row.get("score") or row.get("rating"),
+                "user_rating": row.get("score") if row.get("score") is not None else row.get("rating"),
             }
             normalized.append((normalized_media, lib))
         return normalized
@@ -164,8 +166,8 @@ class FloppyProvider(TrackingProvider):
             return str(status or "planned").lower()
         return {
             1: "reading",
-            2: "completed",
-            3: "planned",
+            2: "planned",
+            3: "completed",
             4: "dropped",
             5: "planned",
         }.get(numeric_status, "planned")

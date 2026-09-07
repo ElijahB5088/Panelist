@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.panelist.app.data.model.LibraryItem
 import com.panelist.app.data.repository.LibraryRepository
 
@@ -66,13 +68,20 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
 @Composable
 private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
     Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().clickable { onOpenItem(item) }) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(item.title, style = MaterialTheme.typography.titleMedium)
-            Text(item.creator ?: "Creator unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val progressLabel = item.progress_percent?.let { "$it% progress" }
-                ?: item.progress?.let { "${"%,d".format(it)} ${item.progress_unit ?: "items"}" }
-                ?: "Progress unavailable"
-            Text("$progressLabel  /  ${item.user_rating?.let { "Your rating ${"%.1f".format(it)}" } ?: "Not rated"}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            AsyncImage(
+                model = item.image_url,
+                contentDescription = item.title,
+                modifier = Modifier.size(56.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.title, style = MaterialTheme.typography.titleMedium)
+                Text(item.creator ?: "Creator unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val progressLabel = item.progress_percent?.let { "$it% progress" }
+                    ?: item.progress?.let { "${"%,d".format(it)} ${item.progress_unit ?: "items"}" }
+                    ?: "Progress unavailable"
+                Text("$progressLabel  /  ${item.user_rating?.let { "Your rating ${"%.1f".format(it)}" } ?: "Not rated"}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -81,6 +90,11 @@ private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
 fun LibraryDetailScreen(item: LibraryItem, onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Back", modifier = Modifier.clickable(onClick = onBack), color = MaterialTheme.colorScheme.primary)
+        AsyncImage(
+            model = item.image_url,
+            contentDescription = item.title,
+            modifier = Modifier.size(180.dp)
+        )
         Text(item.title, style = MaterialTheme.typography.headlineLarge)
         item.creator?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item.rating?.let { Text("Rating ${"%.1f".format(it)} / 10") }
