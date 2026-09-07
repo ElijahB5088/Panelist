@@ -28,7 +28,13 @@ docker compose pull
 docker compose up -d
 ```
 
-The server image is published at `ghcr.io/elijahb5088/panelist-server:latest`. After the first GitHub Actions publish, set the package visibility to **Public** in the repository's Packages settings so unauthenticated users can pull it.
+The server image from `main` is published at `ghcr.io/elijahb5088/panelist-server:latest`. Pushes to other branches also publish branch-specific images, with branch names normalized for Docker tags (for example, `feature/auth-flow` becomes `feature-auth-flow`):
+
+```bash
+docker pull ghcr.io/elijahb5088/panelist-server:feature-auth-flow
+```
+
+Each build also receives an immutable commit SHA tag. After the first GitHub Actions publish, set the package visibility to **Public** in the repository's Packages settings so unauthenticated users can pull it.
 
 To build the server image locally for development instead:
 

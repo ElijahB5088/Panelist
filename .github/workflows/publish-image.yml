@@ -3,7 +3,7 @@ name: Publish server image
 on:
   push:
     branches:
-      - main
+      - '**'
   workflow_dispatch:
 
 permissions:
@@ -24,6 +24,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/elijahb5088/panelist-server
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -36,6 +46,5 @@ jobs:
           context: ./server
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/elijahb5088/panelist-server:latest
-            ghcr.io/elijahb5088/panelist-server:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
