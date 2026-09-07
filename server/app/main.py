@@ -182,6 +182,7 @@ def _metadata_response(result):
         "release_date": result.release_date,
         "image_url": result.image_url,
         "source_url": result.source_url,
+        "media_type": result.media_type,
     }
 
 
@@ -739,7 +740,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
         ]
     placeholders = ",".join("?" for _ in ids)
     rows = conn.execute(
-        f"SELECT id, title, creator, genres, rating, description, source, source_id, image_url, source_url FROM media WHERE id IN ({placeholders})",
+        f"SELECT id, title, creator, genres, rating, description, source, source_id, image_url, source_url, media_type, release_date FROM media WHERE id IN ({placeholders})",
         ids,
     ).fetchall()
     by_id = {r[0]: r for r in rows}
@@ -757,6 +758,8 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
             "source_id": by_id[rec.media_id][7],
             "image_url": by_id[rec.media_id][8],
             "source_url": by_id[rec.media_id][9],
+            "media_type": by_id[rec.media_id][10],
+            "release_date": by_id[rec.media_id][11],
         }
         for rec in recs
         if rec.media_id in by_id

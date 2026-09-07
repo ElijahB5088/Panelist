@@ -16,6 +16,7 @@ class MetadataResult:
     release_date: str | None = None
     image_url: str | None = None
     source_url: str | None = None
+    media_type: str | None = None
 
 
 @dataclass

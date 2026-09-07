@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.SubcomposeAsyncImage
 import androidx.compose.foundation.rememberScrollState
 import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.data.model.MetadataGroup
@@ -30,8 +34,13 @@ import com.panelist.app.data.session.SessionStore
 @Composable
 fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = null, onBack: () -> Unit) {
     val preferredSource = sessionStore?.preferredSource()
-    var selectedSource by remember(group.id, preferredSource) { mutableStateOf(group.preferred(preferredSource).source) }
-    val result = group.variants.firstOrNull { it.source == selectedSource } ?: group.primary
+    val preferredVariant = group.preferred(preferredSource)
+    var selectedVariantKey by remember(group.id, preferredSource) {
+        mutableStateOf(variantKey(preferredVariant.source, preferredVariant.source_id))
+    }
+    val result = group.variants.firstOrNull {
+        variantKey(it.source, it.source_id) == selectedVariantKey
+    } ?: group.primary
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         IconButton(onClick = onBack) {
             Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
@@ -41,8 +50,8 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 group.variants.forEach { variant ->
                     FilterChip(
-                        selected = variant.source == result.source,
-                        onClick = { selectedSource = variant.source },
+                        selected = variantKey(variant.source, variant.source_id) == selectedVariantKey,
+                        onClick = { selectedVariantKey = variantKey(variant.source, variant.source_id) },
                         label = { Text(variant.source) }
                     )
                 }
@@ -50,12 +59,24 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
         }
         Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
             Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SubcomposeAsyncImage(
+                    model = result.image_url,
+                    contentDescription = "Cover for ${result.title}",
+                    modifier = Modifier.fillMaxWidth().height(260.dp),
+                    contentScale = ContentScale.Crop
+                )
                 Text(result.title, style = MaterialTheme.typography.headlineLarge)
+                Text("Showing ${result.source}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 Text(result.creator ?: "Creator unknown", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
                 Text(listOfNotNull(result.publisher, result.release_date).joinToString("  /  "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 result.rating?.let { Text("Rating ${"%.1f".format(it)} / 10", style = MaterialTheme.typography.labelLarge) }
                 result.genres.takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("  /  "), style = MaterialTheme.typography.labelLarge) }
-                result.description?.let { Text(it.replace(Regex("<[^>]*>"), ""), style = MaterialTheme.typography.bodyLarge) }
+                Text(
+                    result.description?.replace(Regex("<[^>]*>"), "")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "No description is available from this source.",
+                    style = MaterialTheme.typography.bodyLarge
+                )
                 Text("Source: ${result.source}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
                 androidx.compose.material3.Button(
                     onClick = { sessionStore?.savePreferredSource(result.source) },
@@ -65,3 +86,5 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
         }
     }
 }
+
+private fun variantKey(source: String, sourceId: String): String = "$source:$sourceId"

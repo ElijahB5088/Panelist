@@ -12,10 +12,14 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
 	val isLoading: Boolean = true,
 	val recommendations: List<Recommendation> = emptyList(),
+	val mediaTypeFilter: String? = null,
 	val currentIndex: Int = 0,
 	val isSubmitting: Boolean = false,
 	val errorMessage: String? = null
-)
+) {
+	val visibleRecommendations: List<Recommendation>
+		get() = recommendations.filter { mediaTypeFilter == null || it.media_type == mediaTypeFilter }
+}
 
 class HomeViewModel(private val repository: RecommendationRepository) : ViewModel() {
 	private val _uiState = MutableStateFlow(HomeUiState())
@@ -43,7 +47,7 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 
 	fun submitFeedback(liked: Boolean) {
 		val state = _uiState.value
-		val recommendation = state.recommendations.getOrNull(state.currentIndex) ?: return
+		val recommendation = state.visibleRecommendations.getOrNull(state.currentIndex) ?: return
 		if (state.isSubmitting) return
 
 		viewModelScope.launch {
@@ -62,5 +66,9 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 				)
 			}
 		}
+	}
+
+	fun setMediaTypeFilter(mediaType: String?) {
+		_uiState.value = _uiState.value.copy(mediaTypeFilter = mediaType, currentIndex = 0)
 	}
 }

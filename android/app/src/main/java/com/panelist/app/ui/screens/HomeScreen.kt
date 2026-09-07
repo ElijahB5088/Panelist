@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,9 +54,15 @@ import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(repository: RecommendationRepository) {
+    HomeScreen(repository, {})
+}
+
+@Composable
+fun HomeScreen(repository: RecommendationRepository, onRecommendationClick: (Recommendation) -> Unit) {
     val viewModel = remember { HomeViewModel(repository) }
     val state by viewModel.uiState.collectAsState()
-    val pick = state.recommendations.getOrNull(state.currentIndex)
+    val visibleRecommendations = state.visibleRecommendations
+    val pick = visibleRecommendations.getOrNull(state.currentIndex)
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val reducedMotion = rememberReducedMotion()
     val animatedDragOffset by animateFloatAsState(
@@ -75,10 +82,27 @@ fun HomeScreen(repository: RecommendationRepository) {
                 Text("great read.", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
             }
             if (pick != null) {
-                Text("${state.currentIndex + 1} / ${state.recommendations.size}", style = MaterialTheme.typography.labelLarge)
+                Text("${state.currentIndex + 1} / ${visibleRecommendations.size}", style = MaterialTheme.typography.labelLarge)
             }
         }
         Text("Swipe through picks shaped by your taste.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.mediaTypeFilter == null,
+                onClick = { viewModel.setMediaTypeFilter(null) },
+                label = { Text("All") }
+            )
+            FilterChip(
+                selected = state.mediaTypeFilter == "comic",
+                onClick = { viewModel.setMediaTypeFilter("comic") },
+                label = { Text("Comics") }
+            )
+            FilterChip(
+                selected = state.mediaTypeFilter == "manga",
+                onClick = { viewModel.setMediaTypeFilter("manga") },
+                label = { Text("Manga") }
+            )
+        }
         Spacer(Modifier.height(4.dp))
 
         when {
@@ -86,13 +110,13 @@ fun HomeScreen(repository: RecommendationRepository) {
             state.errorMessage != null -> ErrorDeck(state.errorMessage!!, viewModel::refresh)
             pick == null -> EmptyDeck()
             else -> {
-                val nextPick = state.recommendations.getOrNull(state.currentIndex + 1)
+                val nextPick = visibleRecommendations.getOrNull(state.currentIndex + 1)
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     if (nextPick != null) {
-                        DeckCard(nextPick, Modifier.offset(y = 12.dp).padding(horizontal = 8.dp))
+                        DeckCard(nextPick, Modifier.offset(y = 12.dp).padding(horizontal = 8.dp), {})
                     }
                     DeckCard(
                         pick,
@@ -123,7 +147,8 @@ fun HomeScreen(repository: RecommendationRepository) {
                             .graphicsLayer {
                                 translationX = animatedDragOffset
                                 rotationZ = animatedDragOffset / 32f
-                            }
+                            },
+                        onClick = { onRecommendationClick(pick) }
                     )
                 }
                 Row(
@@ -141,13 +166,13 @@ fun HomeScreen(repository: RecommendationRepository) {
 }
 
 @Composable
-private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier) {
+private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val accent = when {
         pick.genres.any { it.contains("fantasy", ignoreCase = true) } -> Color(0xFF415E55)
         pick.genres.any { it.contains("science", ignoreCase = true) } -> Color(0xFF3D5875)
         else -> Color(0xFFB94632)
     }
-    Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), tonalElevation = 4.dp) {
+    Surface(modifier = modifier.fillMaxWidth(), onClick = onClick, shape = RoundedCornerShape(24.dp), tonalElevation = 4.dp) {
         Column {
             Box(modifier = Modifier.fillMaxWidth().height(270.dp).background(accent), contentAlignment = Alignment.Center) {
                 Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
@@ -165,7 +190,11 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(pick.title, style = MaterialTheme.typography.headlineSmall)
                 Text(pick.creator ?: "Creator unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Text(pick.genres.joinToString("  /  "), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    listOfNotNull(pick.media_type?.replaceFirstChar { it.uppercase() }, pick.release_date?.take(4), pick.genres.joinToString("  / ").takeIf { it.isNotBlank() }).joinToString("  /  "),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(pick.why, style = MaterialTheme.typography.bodyLarge)
                 pick.source?.let { Text("Source: $it", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 pick.description?.let { Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 2) }

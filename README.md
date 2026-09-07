@@ -21,6 +21,21 @@ Panelist is a privacy-first Android recommendation app + self-hostable backend f
 cp .env.example .env
 ```
 
+Before deploying, replace `PANELIST_SECRET_KEY` and
+`CREDENTIAL_ENCRYPTION_KEY` in `.env` with private random values. The example
+encryption key is valid only so a fresh checkout can start; changing it later
+will make previously stored tracker credentials unreadable. To generate a new
+Fernet key with Python and the server dependency installed, run:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+The default SQLite database is stored in the Docker volume at
+`/app/data/panelist.db`, so it persists across container restarts. The current
+database layer supports SQLite only. The Compose PostgreSQL service is reserved
+for future database support and is not used by the server.
+
 2. Start server:
 
 ```bash
@@ -48,6 +63,33 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 - `http://localhost:8080/docs` for Swagger UI
 - `http://localhost:8080/redoc` for ReDoc
 
+### Backend development
+
+From the repository root, create a virtual environment and install the server
+dependencies:
+
+```bash
+cd server
+python -m venv .venv
+# macOS/Linux
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Run the test suite from the `server` directory:
+
+```powershell
+$env:PYTHONPATH='.'; pytest -q
+```
+
+On macOS/Linux, use `PYTHONPATH=. pytest -q` instead. To run the API without
+Docker, set the environment variables you need and start it with:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
 ## Backend notes
 
 - Provider abstraction: `TrackingProvider` with `FloppyProvider`, the
@@ -68,7 +110,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   and register the exact `MAL_REDIRECT_URI`. Choose `MAL manga` in the Android
   profile screen, complete authorization in the browser, then refresh the
   connection and sync.
-- To enable Kitsu first retreive your api token an easy way is using this command
+- To enable Kitsu, first retrieve an API token. This command sends the supplied
+  Kitsu username and password to Kitsu's token endpoint:
+
   ```powershell
   curl.exe -X POST "https://kitsu.io/api/oauth/token" `
   -H "Content-Type: application/x-www-form-urlencoded" `
@@ -76,7 +120,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   --data-urlencode "username=YOUR_KITSU_EMAIL_OR_USERNAME" `
   --data-urlencode "password=YOUR_KITSU_PASSWORD"
   ```
-  then paste your token into the android apps profile screen, as well as the kitsu url 'https://kitsu.io' 
+
+  Paste the returned token into the Android app's Profile screen and use
+  `https://kitsu.io` as the Kitsu server URL.
 
 ## Android app notes
 
@@ -116,6 +162,40 @@ Create the four secrets in the repository's **Settings > Secrets and variables >
 
 The workflow uses the GitHub run number as `versionCode`, which increases for each build, and the tag as `versionName`. Do not replace the release keystore: Android only permits updates when the application ID and signing key remain the same.
 
+### Android local development
+
+Start the backend on port 8080, then build and install the debug app from the
+`android` directory:
+
+```powershell
+.\gradlew.bat :app:installDebug
+```
+
+The default emulator URL is `http://10.0.2.2:8080/`. For a physical device or
+another server, pass the server URL as a Gradle property. The URL must end in
+`/`:
+
+```powershell
+.\gradlew.bat :app:installDebug -PpanelistBaseUrl=http://192.168.1.20:8080/
+```
+
+Debug builds allow cleartext HTTP for local development. Release builds require
+HTTPS.
+
 ## API
 
-See `docs/api.md`.
+See [`docs/api.md`](docs/api.md) for the complete endpoint list and integration
+details. A minimal authentication flow looks like this:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"use-a-strong-password"}'
+
+curl -X POST http://localhost:8080/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"use-a-strong-password"}'
+
+curl http://localhost:8080/api/me \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```

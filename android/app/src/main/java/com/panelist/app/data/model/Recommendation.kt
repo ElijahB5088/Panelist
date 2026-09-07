@@ -11,5 +11,7 @@ data class Recommendation(
     val source: String? = null,
     val source_id: String? = null,
     val image_url: String? = null,
-    val source_url: String? = null
+    val source_url: String? = null,
+    val media_type: String? = null,
+    val release_date: String? = null
 )

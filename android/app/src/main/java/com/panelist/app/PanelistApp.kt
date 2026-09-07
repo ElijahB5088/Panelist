@@ -36,7 +36,9 @@ import com.panelist.app.ui.screens.ProfileScreen
 import com.panelist.app.ui.screens.MetadataDetailScreen
 import com.panelist.app.ui.screens.ServerConnectionScreen
 import com.panelist.app.data.model.MetadataGroup
+import com.panelist.app.data.model.MetadataResult
 import com.panelist.app.data.model.LibraryItem
+import com.panelist.app.data.model.Recommendation
 import com.panelist.app.ui.theme.PanelistTheme
 import com.panelist.app.data.api.ApiFactory
 import com.panelist.app.data.repository.MetadataRepository
@@ -120,7 +122,12 @@ fun PanelistApp() {
                 }
             ) { pad ->
                 NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(pad)) {
-                    composable("home") { HomeScreen(recommendationRepository) }
+                    composable("home") {
+                        HomeScreen(recommendationRepository) { recommendation ->
+                            selectedMetadata = recommendation.toMetadataGroup()
+                            nav.navigate("metadata-detail")
+                        }
+                    }
                     composable("discover") {
                         DiscoverScreen(metadataRepository, sessionStore) { result ->
                             selectedMetadata = result
@@ -146,6 +153,23 @@ fun PanelistApp() {
             }
         }
     }
+}
+
+private fun Recommendation.toMetadataGroup(): MetadataGroup {
+    val result = MetadataResult(
+        source = source ?: "Panelist",
+        source_id = source_id ?: id,
+        title = title,
+        creator = creator,
+        genres = genres,
+        publisher = null,
+        description = description,
+        rating = rating,
+        release_date = release_date,
+        image_url = image_url,
+        source_url = source_url
+    )
+    return MetadataGroup(id = id, primary = result, variants = listOf(result))
 }
 
 private fun navigateToTab(nav: androidx.navigation.NavHostController, route: String) {
