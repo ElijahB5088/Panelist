@@ -46,7 +46,7 @@ jobs:
           curl --fail http://127.0.0.1:18080/openapi.json
 
       - name: Scan image
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.31.0
         with:
           image-ref: panelist-server:scan
           format: table
