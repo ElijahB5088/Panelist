@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from app.metadata import MetadataResult
-from app.metadata_service import MetadataRateLimitError, MetadataSearchService, group_metadata
+from app.metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary, group_metadata
 from app.providers.metadata import MetadataProvider
 
 
@@ -89,3 +89,15 @@ def test_group_metadata_prefers_requested_source_when_available():
     groups = group_metadata(results, providers, preferred_source="openlibrary")
 
     assert groups[0].primary.source == "openlibrary"
+
+
+def test_covered_primary_uses_variant_cover_when_primary_is_missing_one():
+    results = [
+        MetadataResult("comicvine", "1", "Saga", image_url=None),
+        MetadataResult("openlibrary", "OL1", "Saga", image_url="https://covers.example/saga.jpg"),
+    ]
+    providers = [NamedProvider("comicvine", []), NamedProvider("openlibrary", [])]
+
+    group = group_metadata(results, providers)[0]
+
+    assert covered_primary(group).source == "openlibrary"

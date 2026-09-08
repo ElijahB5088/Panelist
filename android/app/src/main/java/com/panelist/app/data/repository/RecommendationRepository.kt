@@ -6,6 +6,9 @@ import com.panelist.app.data.model.Recommendation
 class RecommendationRepository(private val api: PanelistApi) {
     suspend fun recommendedForYou(): List<Recommendation> = api.recommendations()
 
+    suspend fun recommendedForYou(mediaType: String): List<Recommendation> =
+        api.recommendations(mediaType = mediaType)
+
     suspend fun like(mediaId: String) {
         api.like(mediaId)
     }

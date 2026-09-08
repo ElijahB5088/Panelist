@@ -36,7 +36,25 @@ def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
     }
 
 
-def build_recommendations(conn: sqlite3.Connection, user_id: int, limit: int = 20) -> list[RecommendationResult]:
+def _media_type(value: str | None, source: str | None = None, tracker_source: str | None = None) -> str | None:
+    normalized = _normalize(value)
+    if normalized in {"comic", "comics"}:
+        return "comic"
+    if normalized in {"manga", "manhwa", "manhua"}:
+        return "manga"
+    if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
+        return "manga"
+    if source in {"comicvine", "metron", "openlibrary"} or tracker_source == "floppy":
+        return "comic"
+    return normalized or None
+
+
+def build_recommendations(
+    conn: sqlite3.Connection,
+    user_id: int,
+    limit: int = 20,
+    media_type: str | None = None,
+) -> list[RecommendationResult]:
     library = conn.execute(
         """
         SELECT m.title, m.creator, m.genres, ul.status, ul.progress, ul.user_rating
@@ -107,10 +125,20 @@ def build_recommendations(conn: sqlite3.Connection, user_id: int, limit: int = 2
         for genre in _split_csv(genres):
             positive_genres[genre] = positive_genres.get(genre, 0.0) + 2.0
 
-    candidates = conn.execute("SELECT id, title, creator, genres, rating FROM media").fetchall()
+    media_columns = {row[1] for row in conn.execute("PRAGMA table_info(media)").fetchall()}
+    optional_columns = [column for column in ("media_type", "source", "tracker_source") if column in media_columns]
+    selected_columns = ["id", "title", "creator", "genres", "rating", *optional_columns]
+    candidates = conn.execute(f"SELECT {', '.join(selected_columns)} FROM media").fetchall()
     scored: list[RecommendationResult] = []
-    for mid, title, creator, genres, rating in candidates:
+    for candidate in candidates:
+        mid, title, creator, genres, rating = candidate[:5]
+        optional_values = dict(zip(optional_columns, candidate[5:]))
+        candidate_type = optional_values.get("media_type")
+        source = optional_values.get("source")
+        tracker_source = optional_values.get("tracker_source")
         if mid in already or _normalize_title(title) in already_titles or mid in dismissed:
+            continue
+        if media_type and _media_type(candidate_type, source, tracker_source) != media_type:
             continue
         normalized_creator = _normalize(creator)
         genre_score = sum(positive_genres.get(g, 0.0) for g in _split_csv(genres))

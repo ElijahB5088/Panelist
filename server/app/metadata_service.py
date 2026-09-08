@@ -123,6 +123,15 @@ def group_metadata(
     return grouped
 
 
+def covered_primary(group: MetadataGroup) -> MetadataResult:
+    if group.primary.image_url and group.primary.image_url.strip():
+        return group.primary
+    return next(
+        (variant for variant in group.variants if variant.image_url and variant.image_url.strip()),
+        group.primary,
+    )
+
+
 def _metadata_group_key(result: MetadataResult) -> str:
     title = _normalize_identity(result.title)
     creator = _normalize_identity(result.creator or "")

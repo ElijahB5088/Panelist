@@ -178,7 +178,7 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
                 Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
                 Text("COVER PREVIEW", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge)
                 SubcomposeAsyncImage(
-                    model = pick.image_url,
+                    model = pick.image_url?.takeIf { it.isNotBlank() },
                     contentDescription = "Cover for ${pick.title}",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,

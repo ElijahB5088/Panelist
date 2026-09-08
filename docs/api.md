@@ -7,7 +7,7 @@ Implemented endpoints:
 - `POST /api/auth/refresh`
 - `GET /api/me`
 - `GET /api/profile`
-- `GET /api/recommendations`
+- `GET /api/recommendations?limit=100&media_type=comic|manga`
 - `GET /api/recommendations/{id}`
 - `POST /api/recommendations/{id}/like`
 - `POST /api/recommendations/{id}/dismiss`
@@ -78,3 +78,5 @@ or show their error state.
 `GET /api/recommendations` includes `source`, `source_id`, `image_url`, and
 `source_url` when provenance is available. Users without personalized results
 receive source-backed featured picks with `why: "Featured pick"`.
+The optional `media_type` parameter filters recommendations before the limit is
+applied and accepts `comic` or `manga`.

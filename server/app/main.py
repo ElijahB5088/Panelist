@@ -11,12 +11,12 @@ from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
 from .config import settings
-from .metadata_service import MetadataRateLimitError, MetadataSearchService
+from .metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary
 from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider, FloppyProviderError
 from .providers.kitsu import KitsuProvider
 from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
-from .recommendation import _normalize_title, build_recommendations, library_title_keys
+from .recommendation import _media_type, _normalize_title, build_recommendations, library_title_keys
 from .security import (
     decrypt_secret,
     encrypt_secret,
@@ -193,9 +193,10 @@ def _metadata_response(result):
 
 
 def _metadata_group_response(group):
+    primary = covered_primary(group)
     return {
         "id": group.group_id,
-        "primary": _metadata_response(group.primary),
+        "primary": _metadata_response(primary),
         "variants": [_metadata_response(result) for result in group.variants],
     }
 
@@ -783,7 +784,13 @@ async def metadata_search(request: Request, q: str, limit: int = 10):
     return [_metadata_group_response(group) for group in groups]
 
 
-async def _featured(request: Request, surface: str = "discover", limit: int = 10, excluded_titles: set[str] | None = None):
+async def _featured(
+    request: Request,
+    surface: str = "discover",
+    limit: int = 10,
+    excluded_titles: set[str] | None = None,
+    media_type: str | None = None,
+):
     if surface not in {"discover", "home"}:
         raise HTTPException(400, "surface must be discover or home")
     if limit < 1 or limit > 50:
@@ -802,6 +809,8 @@ async def _featured(request: Request, surface: str = "discover", limit: int = 10
                 item = _metadata_group_response(group)
                 if excluded_titles and _normalize_title(item["primary"]["title"]) in excluded_titles:
                     continue
+                if media_type and _media_type(item["primary"].get("media_type"), item["primary"].get("source")) != media_type:
+                    continue
                 results.append(item)
             if len(results) >= limit:
                 return results
@@ -814,8 +823,18 @@ async def featured(request: Request, surface: str = "discover", limit: int = 10)
 
 
 @app.get("/api/recommendations")
-async def recommendations(request: Request, user=Depends(user_from_auth), limit: int = 100):
-    recs = build_recommendations(conn, user["id"], limit=limit)
+async def recommendations(
+    request: Request,
+    user=Depends(user_from_auth),
+    limit: int = 100,
+    media_type: str | None = None,
+):
+    if limit < 1 or limit > 100:
+        raise HTTPException(400, "limit must be between 1 and 100")
+    normalized_media_type = _media_type(media_type) if media_type else None
+    if media_type and normalized_media_type not in {"comic", "manga"}:
+        raise HTTPException(400, "media_type must be comic or manga")
+    recs = build_recommendations(conn, user["id"], limit=limit, media_type=normalized_media_type)
     ids = [r.media_id for r in recs]
     if not ids:
         featured_results = await _featured(
@@ -823,6 +842,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
             surface="home",
             limit=min(limit, 50),
             excluded_titles=library_title_keys(conn, user["id"]),
+            media_type=normalized_media_type,
         )
         return [
             {"id": item["id"], "score": 0, "why": "Featured pick", **item["primary"]}
@@ -833,15 +853,7 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
         f"""
         SELECT id, title, creator, genres, rating, description, source, source_id,
                image_url, source_url,
-               COALESCE(
-                   CASE WHEN media_type = 'comics' THEN 'comic' ELSE media_type END,
-                   CASE
-                       WHEN source IN ('anilist', 'kitsu', 'mal')
-                            OR tracker_source IN ('kitsu', 'mal') THEN 'manga'
-                       WHEN source IN ('comicvine', 'metron', 'openlibrary')
-                            OR tracker_source = 'floppy' THEN 'comic'
-                   END
-               ) AS media_type,
+               tracker_source, media_type,
                release_date
         FROM media
         WHERE id IN ({placeholders})
@@ -863,8 +875,8 @@ async def recommendations(request: Request, user=Depends(user_from_auth), limit:
             "source_id": by_id[rec.media_id][7],
             "image_url": by_id[rec.media_id][8],
             "source_url": by_id[rec.media_id][9],
-            "media_type": by_id[rec.media_id][10],
-            "release_date": by_id[rec.media_id][11],
+            "media_type": _media_type(by_id[rec.media_id][11], by_id[rec.media_id][6], by_id[rec.media_id][10]),
+            "release_date": by_id[rec.media_id][12],
         }
         for rec in recs
         if rec.media_id in by_id

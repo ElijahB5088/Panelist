@@ -7,18 +7,18 @@ def setup_db():
     conn = sqlite3.connect(":memory:")
     conn.executescript(
         """
-        CREATE TABLE media (id TEXT PRIMARY KEY, title TEXT, creator TEXT, genres TEXT, rating REAL);
+        CREATE TABLE media (id TEXT PRIMARY KEY, title TEXT, creator TEXT, genres TEXT, rating REAL, media_type TEXT, source TEXT, tracker_source TEXT);
         CREATE TABLE user_library (user_id INTEGER, media_id TEXT, status TEXT, progress INTEGER, user_rating REAL, PRIMARY KEY(user_id, media_id));
         CREATE TABLE recommendation_feedback (id INTEGER PRIMARY KEY, user_id INTEGER, media_id TEXT, feedback TEXT, created_at TEXT);
         """
     )
     conn.executemany(
-        "INSERT INTO media (id, title, creator, genres, rating) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO media (id, title, creator, genres, rating, media_type, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            ("saga", "Saga", "Brian K. Vaughan", "science-fiction,space-opera", 4.8),
-            ("a", "A", "Brian K. Vaughan", "science-fiction", 4.1),
-            ("b", "B", "Other", "romance", 4.9),
-            ("c", "C", "Other", "science-fiction", 4.0),
+            ("saga", "Saga", "Brian K. Vaughan", "science-fiction,space-opera", 4.8, "comic", "comicvine"),
+            ("a", "A", "Brian K. Vaughan", "science-fiction", 4.1, "comic", "comicvine"),
+            ("b", "B", "Other", "romance", 4.9, "manga", "anilist"),
+            ("c", "C", "Other", "science-fiction", 4.0, "comic", "comicvine"),
         ],
     )
     conn.execute("INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'saga', 'completed', 100, 5)")
@@ -106,3 +106,11 @@ def test_liked_feedback_boosts_matching_items():
     recs = build_recommendations(conn, 1, 10)
 
     assert recs[0].media_id == "b"
+
+
+def test_recommendations_can_filter_candidates_by_media_type():
+    conn = setup_db()
+
+    recs = build_recommendations(conn, 1, 10, media_type="manga")
+
+    assert [recommendation.media_id for recommendation in recs] == ["b"]

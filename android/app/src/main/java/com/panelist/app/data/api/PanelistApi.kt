@@ -32,7 +32,10 @@ interface PanelistApi {
     suspend fun register(@Body credentials: Credentials): FeedbackResponse
 
     @GET("/api/recommendations")
-    suspend fun recommendations(@Query("limit") limit: Int = 100): List<Recommendation>
+    suspend fun recommendations(
+        @Query("limit") limit: Int = 100,
+        @Query("media_type") mediaType: String? = null
+    ): List<Recommendation>
 
     @POST("/api/recommendations/{mediaId}/like")
     suspend fun like(@Path("mediaId") mediaId: String): FeedbackResponse
