@@ -84,7 +84,7 @@ fun DiscoverScreen(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("All", "comicvine", "openlibrary", "anilist").forEach { source ->
+            listOf("All", "comicvine", "gcd", "openlibrary", "anilist").forEach { source ->
                 FilterChip(
                     selected = selectedSource == source,
                     onClick = { selectedSource = source },

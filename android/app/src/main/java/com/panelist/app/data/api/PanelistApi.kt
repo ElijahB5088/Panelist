@@ -33,7 +33,7 @@ interface PanelistApi {
 
     @GET("/api/recommendations")
     suspend fun recommendations(
-        @Query("limit") limit: Int = 100,
+        @Query("limit") limit: Int = 20,
         @Query("media_type") mediaType: String? = null
     ): List<Recommendation>
 

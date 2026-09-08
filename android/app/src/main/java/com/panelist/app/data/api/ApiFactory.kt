@@ -7,6 +7,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.TimeUnit
 
 object ApiFactory {
     fun create(sessionStore: SessionStore, baseUrl: String): PanelistApi {
@@ -22,7 +23,12 @@ object ApiFactory {
 
         return Retrofit.Builder()
         .baseUrl(baseUrl)
-            .client(OkHttpClient.Builder().addInterceptor(authInterceptor).build())
+            .client(
+                OkHttpClient.Builder()
+                    .addInterceptor(authInterceptor)
+                    .callTimeout(15, TimeUnit.SECONDS)
+                    .build()
+            )
         .addConverterFactory(
             MoshiConverterFactory.create(
                 Moshi.Builder().add(KotlinJsonAdapterFactory()).build()

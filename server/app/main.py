@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from .db import get_conn, run_migrations
 from .config import settings
 from .metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary
-from .providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
+from .providers.metadata import AniListProvider, ComicVineProvider, GCDProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider, FloppyProviderError
 from .providers.kitsu import KitsuProvider
 from .providers.mal import MALProvider, decode_token_bundle, encode_token_bundle
@@ -30,6 +30,8 @@ from .security import (
 
 conn = get_conn()
 run_migrations(conn)
+RECOMMENDATION_COVER_ENRICHMENT_LIMIT = 8
+RECOMMENDATION_COVER_TIMEOUT_SECONDS = 3
 tracking_providers = {
     "floppy": FloppyProvider(),
     "kitsu": KitsuProvider(),
@@ -38,6 +40,7 @@ tracking_providers = {
 metadata_providers = [
     ComicVineProvider(settings.comicvine_api_key, settings.metadata_user_agent),
     MetronProvider(settings.metron_api_url, settings.metron_api_token, settings.metadata_user_agent),
+    GCDProvider(settings.metadata_user_agent),
     OpenLibraryProvider(settings.metadata_user_agent),
     AniListProvider(),
 ]
@@ -228,7 +231,7 @@ async def _recommendation_cover(row):
         None,
     )
     if not match:
-        return None
+        return row
     conn.execute(
         """
         UPDATE media
@@ -1001,12 +1004,22 @@ async def recommendations(
         ids,
     ).fetchall()
     by_id = {r[0]: r for r in rows}
-    enriched_rows = await asyncio.gather(*(_recommendation_cover(by_id[rec.media_id]) for rec in recs if rec.media_id in by_id))
-    by_id = {
-        row[0]: row
-        for row in enriched_rows
-        if row is not None
-    }
+    coverless_rows = [
+        by_id[rec.media_id]
+        for rec in recs
+        if rec.media_id in by_id and not (by_id[rec.media_id][8] and by_id[rec.media_id][8].strip())
+    ]
+    rows_to_enrich = coverless_rows[:RECOMMENDATION_COVER_ENRICHMENT_LIMIT]
+    enriched_rows = await asyncio.gather(
+        *(
+            asyncio.wait_for(_recommendation_cover(row), RECOMMENDATION_COVER_TIMEOUT_SECONDS)
+            for row in rows_to_enrich
+        ),
+        return_exceptions=True,
+    )
+    for original_row, enriched_row in zip(rows_to_enrich, enriched_rows):
+        if not isinstance(enriched_row, Exception):
+            by_id[original_row[0]] = enriched_row
     return [
         {
             "id": rec.media_id,

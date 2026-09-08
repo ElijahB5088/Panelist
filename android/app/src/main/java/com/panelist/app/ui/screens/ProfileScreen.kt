@@ -230,7 +230,7 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(null to "Any source", "comicvine" to "Comic Vine", "openlibrary" to "Open Library", "anilist" to "AniList", "metron" to "Metron").forEach { (source, label) ->
+                    listOf(null to "Any source", "comicvine" to "Comic Vine", "gcd" to "Grand Comics Database", "openlibrary" to "Open Library", "anilist" to "AniList", "metron" to "Metron").forEach { (source, label) ->
                         FilterChip(
                             selected = preferredSource == source,
                             onClick = {

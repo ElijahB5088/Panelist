@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import re
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -125,6 +127,54 @@ class MetronProvider(MetadataProvider):
             image_url=row.get("image"),
             source_url=row.get("resource_url") or f"https://metron.cloud/series/{source_id}/",
         )
+
+
+class GCDProvider(MetadataProvider):
+    name = "gcd"
+    base_url = "https://www.comics.org/api"
+
+    def __init__(self, user_agent: str = "Panelist/0.1"):
+        self.user_agent = user_agent
+
+    async def search(self, query: str, limit: int = 10) -> list[MetadataResult]:
+        if not query.strip() or limit <= 0:
+            return []
+        path_query = quote(query.strip(), safe="")
+        headers = {"User-Agent": self.user_agent}
+        async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+            response = await client.get(f"{self.base_url}/series/name/{path_query}/")
+        response.raise_for_status()
+        payload = response.json()
+        rows = payload.get("results", []) if isinstance(payload, dict) else payload
+        return [self._normalize(row) for row in rows[:limit] if isinstance(row, dict)]
+
+    def _normalize(self, row: dict) -> MetadataResult:
+        api_url = row.get("api_url") or row.get("resource_url")
+        source_id = self._source_id(api_url)
+        source_url = row.get("url") or self._public_url(api_url, source_id)
+        year = row.get("year_began")
+        return MetadataResult(
+            source=self.name,
+            source_id=source_id,
+            title=row.get("name") or "Untitled",
+            release_date=f"{year}-01-01" if year else None,
+            source_url=source_url,
+            media_type="comic",
+        )
+
+    @staticmethod
+    def _source_id(api_url: str | None) -> str:
+        if not api_url:
+            return ""
+        match = re.search(r"/series/(\d+)/?", urlparse(api_url).path)
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _public_url(api_url: str | None, source_id: str) -> str | None:
+        if api_url:
+            parsed = urlparse(api_url)
+            return f"{parsed.scheme}://{parsed.netloc}/series/{source_id}/" if source_id else api_url
+        return f"https://www.comics.org/series/{source_id}/" if source_id else None
 
 
 class OpenLibraryProvider(MetadataProvider):

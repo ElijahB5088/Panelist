@@ -1,4 +1,7 @@
-from app.providers.metadata import AniListProvider, ComicVineProvider, MetronProvider, OpenLibraryProvider
+import httpx
+import asyncio
+
+from app.providers.metadata import AniListProvider, ComicVineProvider, GCDProvider, MetronProvider, OpenLibraryProvider
 
 
 def test_comicvine_volume_normalization():
@@ -84,3 +87,54 @@ def test_metron_series_normalization():
     assert result.release_date == "2012-01-01"
     assert result.image_url.endswith("saga.jpg")
     assert result.creator == "Brian K. Vaughan"
+
+
+def test_gcd_series_normalization():
+    result = GCDProvider()._normalize(
+        {
+            "api_url": "https://www.comics.org/api/series/7096/",
+            "name": "Batman",
+            "year_began": 1940,
+        }
+    )
+
+    assert result.source == "gcd"
+    assert result.source_id == "7096"
+    assert result.title == "Batman"
+    assert result.release_date == "1940-01-01"
+    assert result.source_url == "https://www.comics.org/series/7096/"
+    assert result.media_type == "comic"
+    assert result.creator is None
+    assert result.image_url is None
+
+
+def test_gcd_search_uses_series_name_path(monkeypatch):
+    requests = []
+
+    class MockResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"results": [{"api_url": "https://www.comics.org/api/series/7096/", "name": "Batman"}]}
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url):
+            requests.append((url, self.kwargs))
+            return MockResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    results = asyncio.run(GCDProvider("Panelist/test").search("Batman & Robin", limit=1))
+
+    assert len(results) == 1
+    assert requests[0][0] == "https://www.comics.org/api/series/name/Batman%20%26%20Robin/"
+    assert requests[0][1]["headers"]["User-Agent"] == "Panelist/test"

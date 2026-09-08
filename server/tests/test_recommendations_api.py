@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi.testclient import TestClient
@@ -105,3 +106,34 @@ def test_recommendations_enrich_coverless_candidate(monkeypatch):
     assert item["image_url"] == "https://covers.example/candidate.jpg"
     assert item["source"] == "comicvine"
     assert main.conn.execute("SELECT image_url FROM media WHERE id = ?", (candidate_id,)).fetchone()[0] == item["image_url"]
+
+
+def test_recommendations_keep_coverless_candidate_when_enrichment_times_out(monkeypatch):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    library_id = f"{user_id}-library"
+    candidate_id = f"{user_id}-candidate"
+    main.conn.executemany(
+        "INSERT INTO media (id, title, creator, genres, rating, source, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (library_id, "Library Saga", "Creator", "science-fiction", 5.0, "comicvine", "https://covers.example/library.jpg"),
+            (candidate_id, "Candidate Saga", "Creator", "science-fiction", 5.0, None, None),
+        ],
+    )
+    main.conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (?, ?, ?, ?, ?)",
+        (user_id, library_id, "completed", 100, 5.0),
+    )
+    main.conn.commit()
+
+    async def grouped_search(query, limit=10):
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
+
+    response = client.get("/api/recommendations", params={"limit": 10})
+
+    assert response.status_code == 200
+    item = next(item for item in response.json() if item["id"] == candidate_id)
+    assert item["title"] == "Candidate Saga"
+    assert item["image_url"] is None
