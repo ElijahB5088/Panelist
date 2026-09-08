@@ -46,10 +46,17 @@ jobs:
             http://127.0.0.1:18080/ready
           curl --fail http://127.0.0.1:18080/openapi.json
 
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.63.0
+          cache: true
+
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.31.0
         with:
           image-ref: panelist-server:scan
+          skip-setup-trivy: true
           format: table
           exit-code: '1'
           ignore-unfixed: true
