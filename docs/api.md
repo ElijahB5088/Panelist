@@ -32,6 +32,7 @@ Implemented endpoints:
 - `DELETE /api/integrations/mal`
 - `POST /api/sync`
 - `GET /api/sync/status`
+- `GET /api/audit/logs?limit=50&before=<timestamp>&event_type=<type>`
 
 Floppy credentials are encrypted at rest and are never returned by the API.
 Automatic Floppy sync is disabled when a credential is connected or replaced.
@@ -41,6 +42,17 @@ runs due syncs in the background; failures remain recorded in the integration
 status and are retried on the next interval.
 
 Authentication: bearer token issued by `/api/auth/login`.
+
+`GET /ready` checks database availability and migration initialization. It is
+intended for container health checks and returns `503` when the database is not
+ready.
+
+`GET /api/audit/logs` requires authentication and returns only the requesting
+user's redacted audit events. Results are bounded to 100 entries per request
+and can be paginated with the `before` timestamp. Event details never include
+passwords, access tokens, request bodies, or sensitive headers. When
+`TRUSTED_PROXY_HEADERS=true`, HTTPS observations use the configured proxy's
+`X-Forwarded-Proto`; otherwise the direct request scheme is used.
 
 `GET /api/library` accepts the optional `status` filter (`reading`, `completed`,
 `planned`, `dropped`, or `rated`) and `sort` order. Sort values are

@@ -50,6 +50,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Run Android quality gates
+        working-directory: android
+        run: ./gradlew check lint assembleDebug --stacktrace
+
       - name: Resolve release version
         id: version
         shell: bash
@@ -92,9 +96,22 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
+      - name: Generate APK checksum
+        working-directory: android/app/build/outputs/apk/release
+        run: sha256sum app-release.apk > app-release.apk.sha256
+
+      - name: Upload APK checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: panelist-${{ steps.version.outputs.version }}-${{ steps.version.outputs.version_code }}-checksum
+          path: android/app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           generate_release_notes: true
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release.apk.sha256

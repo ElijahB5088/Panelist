@@ -45,31 +45,22 @@ fun DiscoverScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf("All") }
-    var results by remember { mutableStateOf(emptyList<MetadataGroup>()) }
+    var results by remember { mutableStateOf(demoMetadata.map { MetadataGroup(it.source + it.source_id, it, listOf(it)) }) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query, repository) {
         delay(350)
-        if (repository == null) {
-            results = emptyList()
+        if (query.trim().length < 2 || repository == null) {
+                results = demoMetadata.map { MetadataGroup(it.source + it.source_id, it, listOf(it)) }
             isLoading = false
             errorMessage = null
         } else {
             isLoading = true
             errorMessage = null
-            runCatching {
-                if (query.trim().length < 2) {
-                    repository.featured("discover")
-                } else {
-                    repository.search(query.trim())
-                }
-            }
+            runCatching { repository.search(query.trim()) }
                 .onSuccess { results = it }
-                .onFailure {
-                    results = emptyList()
-                    errorMessage = "Metadata search is unavailable right now."
-                }
+                .onFailure { errorMessage = "Metadata search is unavailable right now." }
             isLoading = false
         }
     }
@@ -119,6 +110,7 @@ fun DiscoverScreen(
         }
     }
 }
+
 @Composable
 private fun MetadataCard(result: MetadataResult, variantCount: Int, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp, modifier = Modifier.clickable(onClick = onClick)) {
@@ -160,3 +152,10 @@ private fun CoverFallback(result: MetadataResult, accent: Color) {
         Text(result.source, modifier = Modifier.padding(8.dp), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge)
     }
 }
+
+private val demoMetadata = listOf(
+    MetadataResult("comicvine", "4050", "Saga", "Brian K. Vaughan", listOf("Sci-fi", "Drama"), "Image", "A family crosses a war-torn galaxy.", 8.8, "2012-01-01", "https://example.com/saga.jpg", "https://comicvine.gamespot.com/saga/"),
+    MetadataResult("comicvine", "4051", "Monstress", "Marjorie Liu", listOf("Fantasy", "Drama"), "Image", "A young woman shares a psychic link with a monster.", 8.7, "2015-01-01", "https://example.com/monstress.jpg", "https://comicvine.gamespot.com/monstress/"),
+    MetadataResult("anilist", "30002", "Witch Hat Atelier", "Kamome Shirahama", listOf("Fantasy", "Adventure"), null, "A girl discovers that magic is drawn, not born.", 9.0, "2016-07-22", "https://example.com/witch-hat.jpg", "https://anilist.co/manga/100572"),
+    MetadataResult("openlibrary", "OL123W", "The Sandman", "Neil Gaiman", listOf("Fantasy", "Comics"), "DC Comics", "Dreams, stories, and the cost of immortality.", 8.6, "1989-01-01", "https://example.com/sandman.jpg", "https://openlibrary.org/works/OL123W")
+)

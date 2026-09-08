@@ -2,6 +2,7 @@ import os
 
 
 class Settings:
+    environment = os.getenv("PANELIST_ENV", "development").lower()
     host = os.getenv("PANELIST_HOST", "0.0.0.0")
     port = int(os.getenv("PANELIST_PORT", "8080"))
     secret_key = os.getenv("PANELIST_SECRET_KEY", "dev-secret")
@@ -22,6 +23,15 @@ class Settings:
     mal_client_id = os.getenv("MAL_CLIENT_ID", "")
     mal_client_secret = os.getenv("MAL_CLIENT_SECRET", "")
     mal_redirect_uri = os.getenv("MAL_REDIRECT_URI", "http://localhost:8080/api/integrations/mal/callback")
+    trusted_proxy_headers = os.getenv("TRUSTED_PROXY_HEADERS", "false").lower() == "true"
+
+    def validate_runtime(self) -> None:
+        if self.environment not in {"production", "prod"}:
+            return
+        if self.secret_key in {"", "dev-secret", "replace-this-with-a-long-random-value"}:
+            raise RuntimeError("PANELIST_SECRET_KEY must be configured in production")
+        if not self.credential_encryption_key:
+            raise RuntimeError("CREDENTIAL_ENCRYPTION_KEY must be configured in production")
 
 
 settings = Settings()

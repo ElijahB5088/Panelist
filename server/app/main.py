@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from html import escape
 import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
@@ -51,6 +53,7 @@ metadata_service = MetadataSearchService(
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    settings.validate_runtime()
     run_migrations(conn)
     conn.execute(
         """
@@ -175,6 +178,16 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/ready")
+def readiness():
+    try:
+        conn.execute("SELECT 1").fetchone()
+        conn.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").fetchone()
+    except sqlite3.Error as exc:
+        raise HTTPException(503, "Database is not ready") from exc
+    return {"status": "ready"}
+
+
 def _metadata_response(result):
     return {
         "source": result.source,
@@ -241,6 +254,34 @@ def _sync_settings_response(row):
         "enabled": bool(row[0]),
         "interval_minutes": row[1],
         "next_sync_at": row[2],
+    }
+
+
+def _audit_event(
+    user_id: int | None,
+    event_type: str,
+    *,
+    outcome: str = "success",
+    details: dict[str, object] | None = None,
+) -> None:
+    conn.execute(
+        "INSERT INTO audit_events (user_id, event_type, outcome, details, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user_id, event_type, outcome, json.dumps(details or {}, sort_keys=True), now_iso()),
+    )
+    conn.commit()
+
+
+def _request_security_details(request: Request) -> dict[str, object]:
+    if settings.trusted_proxy_headers:
+        observed_https = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower() == "https"
+    else:
+        observed_https = request.url.scheme == "https"
+    return {
+        "observed_https": observed_https,
+        "forwarded_headers_present": [
+            name for name in ("x-forwarded-proto", "x-forwarded-host") if name in request.headers
+        ],
+        "trusted_proxy_headers": settings.trusted_proxy_headers,
     }
 
 
@@ -401,6 +442,8 @@ def register(body: Credentials):
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             (body.username, hash_password(body.password)),
         )
+        user_id = conn.execute("SELECT id FROM users WHERE username = ?", (body.username,)).fetchone()[0]
+        _audit_event(user_id, "auth.registered")
         conn.commit()
     except sqlite3.IntegrityError as exc:
         raise HTTPException(400, "Username already exists") from exc
@@ -414,7 +457,7 @@ def login(body: Credentials):
         raise HTTPException(401, "Invalid credentials")
     token = issue_token()
     conn.execute("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)", (token, row[0], now_iso()))
-    conn.commit()
+    _audit_event(row[0], "auth.login", details={"security": "credentials accepted"})
     return {"access_token": token}
 
 
@@ -430,6 +473,38 @@ def refresh(user=Depends(user_from_auth)):
 @app.get("/api/me")
 def me(user=Depends(user_from_auth)):
     return {"id": user["id"], "username": user["username"]}
+
+
+@app.get("/api/audit/logs")
+def audit_logs(
+    request: Request,
+    user=Depends(user_from_auth),
+    limit: int = Query(default=50, ge=1, le=100),
+    before: str | None = None,
+    event_type: str | None = None,
+):
+    _audit_event(user["id"], "security.https_observed", details=_request_security_details(request))
+    query = "SELECT id, event_type, outcome, details, created_at FROM audit_events WHERE user_id = ?"
+    params: list[object] = [user["id"]]
+    if event_type:
+        query += " AND event_type = ?"
+        params.append(event_type)
+    if before:
+        query += " AND created_at < ?"
+        params.append(before)
+    query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    return [
+        {
+            "id": row[0],
+            "event_type": row[1],
+            "outcome": row[2],
+            "details": json.loads(row[3]),
+            "created_at": row[4],
+        }
+        for row in rows
+    ]
 
 
 @app.get("/api/profile")
@@ -563,7 +638,7 @@ def connect_floppy(body: FloppyConfig, user=Depends(user_from_auth)):
         """,
         (user["id"], body.server_url, encrypt_secret(body.api_token)),
     )
-    conn.commit()
+    _audit_event(user["id"], "integration.floppy.connected", details={"server_url": body.server_url})
     return {"connected": True, "server_url": body.server_url}
 
 
@@ -611,21 +686,21 @@ def connect_kitsu(body: KitsuConfig, user=Depends(user_from_auth)):
                 """,
                 (user["id"], body.server_url, encrypt_secret(body.api_token)),
         )
-        conn.commit()
+        _audit_event(user["id"], "integration.kitsu.connected", details={"server_url": body.server_url})
         return {"connected": True, "server_url": body.server_url}
 
 
 @app.delete("/api/integrations/floppy")
 def disconnect_floppy(user=Depends(user_from_auth)):
     conn.execute("DELETE FROM tracker_integrations WHERE user_id = ?", (user["id"],))
-    conn.commit()
+    _audit_event(user["id"], "integration.disconnected", details={"provider": "floppy"})
     return {"ok": True}
 
 
 @app.delete("/api/integrations/kitsu")
 def disconnect_kitsu(user=Depends(user_from_auth)):
     conn.execute("DELETE FROM tracker_integrations WHERE user_id = ?", (user["id"],))
-    conn.commit()
+    _audit_event(user["id"], "integration.disconnected", details={"provider": "kitsu"})
     return {"ok": True}
 
 
@@ -634,11 +709,15 @@ async def sync(user=Depends(user_from_auth)):
     try:
         await sync_user_library(user["id"])
     except ValueError as exc:
+        _audit_event(user["id"], "sync.failed", outcome="rejected", details={"reason": str(exc)[:120]})
         raise HTTPException(400, str(exc)) from exc
     except FloppyProviderError as exc:
+        _audit_event(user["id"], "sync.failed", outcome="error", details={"provider": "floppy"})
         raise HTTPException(502, f"Sync failed: {exc}") from exc
     except Exception as exc:
+        _audit_event(user["id"], "sync.failed", outcome="error")
         raise HTTPException(502, "Tracker sync failed") from exc
+    _audit_event(user["id"], "sync.completed")
     return {"ok": True, "status": "synced"}
 
 

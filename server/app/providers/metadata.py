@@ -56,7 +56,6 @@ class ComicVineProvider(MetadataProvider):
             release_date=f"{year}-01-01" if year else None,
             image_url=image.get("original_url") or image.get("super_url"),
             source_url=row.get("site_detail_url"),
-            media_type="comic",
         )
 
 
@@ -93,7 +92,6 @@ class MetronProvider(MetadataProvider):
             release_date=f"{year}-01-01" if year else None,
             image_url=row.get("image"),
             source_url=row.get("resource_url") or f"https://metron.cloud/series/{source_id}/",
-            media_type="comic",
         )
 
 
@@ -123,7 +121,6 @@ class OpenLibraryProvider(MetadataProvider):
             release_date=f"{row['first_publish_year']}-01-01" if row.get("first_publish_year") else None,
             image_url=f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None,
             source_url=f"https://openlibrary.org{row['key']}" if row.get("key") else None,
-            media_type="comic",
         )
 
 
@@ -168,5 +165,4 @@ class AniListProvider(MetadataProvider):
             release_date="-".join(date_parts) if date_parts else None,
             image_url=(row.get("coverImage") or {}).get("large"),
             source_url=row.get("siteUrl"),
-            media_type="manga",
         )

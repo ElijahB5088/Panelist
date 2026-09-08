@@ -1,11 +1,13 @@
 # Panelist
+
 Panelist is a privacy-first Android recommendation app + self-hostable backend for comics, manga, and graphic novels.
+
 <div align="center">
   
   [![Build Status](https://img.shields.io/github/actions/workflow/status/elijahb5088/panelist/publish-image.yml?branch=main&style=for-the-badge&logo=github&label=Build)](https://github.com/elijahb5088/panelist/actions/workflows/publish-image.yml)
-  
   [![License](https://img.shields.io/github/license/elijahb5088/panelist?style=for-the-badge&color=green)](https://github.com/elijahb5088/panelist/blob/main/LICENSE)
-
+  [![Sponsor](https://img.shields.io/github/sponsors/elijahb5088?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/elijahb5088)
+  [![Ko-Fi](https://img.shields.io/badge/Ko--fi-F16061?logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/elijahb5088)
   [![GitHub Stars](https://img.shields.io/github/stars/elijahb5088/panelist?style=for-the-badge&logo=github&color=yellow)](https://github.com/elijahb5088/panelist/stargazers)
 
 </div>
@@ -21,6 +23,10 @@ Panelist is a privacy-first Android recommendation app + self-hostable backend f
 └── .env.example
 ```
 
+## Demo
+
+Try out the API here at the demo site https://panelist-demo.elijahb5088.cc, you can also use this as a backend to test the android app.
+
 ## Quick start (self-hosted backend)
 
 1. Copy environment file:
@@ -29,25 +35,9 @@ Panelist is a privacy-first Android recommendation app + self-hostable backend f
 cp .env.example .env
 ```
 
-Before deploying, replace `PANELIST_SECRET_KEY` and
-`CREDENTIAL_ENCRYPTION_KEY` in `.env` with private random values. The example
-encryption key is valid only so a fresh checkout can start; changing it later
-will make previously stored tracker credentials unreadable. To generate a new
-Fernet key with Python and the server dependency installed, run:
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-The default SQLite database is stored in the Docker volume at
-`/app/data/panelist.db`, so it persists across container restarts. The current
-database layer supports SQLite only. The Compose PostgreSQL service is reserved
-for future database support and is not used by the server.
-
 2. Start server:
 
 ```bash
-cp docker-compose.yml docker-compose.yml
 docker compose pull
 docker compose up -d
 ```
@@ -66,48 +56,48 @@ To build the server image locally for development instead:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-3. Open the server homepage or API docs:
+3. Open API docs:
 
-- `http://localhost:8080/` for the Panelist landing page
-- `http://localhost:8080/docs` for Swagger UI
-- `http://localhost:8080/redoc` for ReDoc
+- `http://localhost:8080/docs`
 
-### Backend development
+### Supported deployment model
 
-From the repository root, create a virtual environment and install the server
-dependencies:
+The supported deployment is one Panelist server process on one host using the
+SQLite database mounted at `/app/data`. The in-process automatic sync worker,
+metadata cache, rate limiting, and sync locks are process-local, so do not run
+multiple server replicas or Uvicorn workers against the same database.
 
-```bash
-cd server
-python -m venv .venv
-# macOS/Linux
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
+The PostgreSQL service in `docker-compose.yml` is reserved for future work and
+is not currently supported by the application. Do not configure a PostgreSQL
+`DATABASE_URL` yet; the server currently uses Python's SQLite driver directly.
 
-Run the test suite from the `server` directory:
-
-```powershell
-$env:PYTHONPATH='.'; pytest -q
-```
-
-On macOS/Linux, use `PYTHONPATH=. pytest -q` instead. To run the API without
-Docker, set the environment variables you need and start it with:
+Back up the SQLite volume before upgrades or host maintenance. A simple
+offline backup is:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+docker compose stop panelist-server
+docker run --rm -v panelist_data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/panelist-data-backup.tgz -C /data .
+docker compose start panelist-server
 ```
+
+To restore, stop the server, extract the archive into the `panelist_data`
+volume, then start the server and verify `/ready` and `/docs`. Keep immutable
+image tags or digests so a deployment can be rolled back without changing the
+database schema unexpectedly.
+
+For production, set unique random values for `PANELIST_SECRET_KEY` and
+`CREDENTIAL_ENCRYPTION_KEY`, terminate HTTPS at a trusted reverse proxy, and
+set `TRUSTED_PROXY_HEADERS=true` only when that proxy overwrites forwarding
+headers. The authenticated `GET /api/audit/logs` endpoint reports redacted
+authentication, integration, sync, and proxy observations for the current
+user. It never stores passwords, tokens, request bodies, or sensitive headers.
 
 ## Backend notes
 
 - Provider abstraction: `TrackingProvider` with `FloppyProvider`, the
   manga-only `KitsuProvider`, and the manga-only `MALProvider`
 - Floppy token is encrypted at rest on the Panelist server
-- Floppy automatic sync is opt-in from the Android Profile screen. Choose an
-  interval between 15 minutes and 7 days; the server runs scheduled syncs even
-  when the Android app is closed. Sync failures remain visible and are retried
-  on the next interval.
 - Kitsu tokens are encrypted at rest on the Panelist server
 - MAL OAuth access and refresh tokens are encrypted at rest on the Panelist server
 - Recommendation engine is local, content-based, and explainable
@@ -123,9 +113,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
   and register the exact `MAL_REDIRECT_URI`. Choose `MAL manga` in the Android
   profile screen, complete authorization in the browser, then refresh the
   connection and sync.
-- To enable Kitsu, first retrieve an API token. This command sends the supplied
-  Kitsu username and password to Kitsu's token endpoint:
-
+- To enable Kitsu first retreive your api token an easy way is using this command
   ```powershell
   curl.exe -X POST "https://kitsu.io/api/oauth/token" `
   -H "Content-Type: application/x-www-form-urlencoded" `
@@ -133,9 +121,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
   --data-urlencode "username=YOUR_KITSU_EMAIL_OR_USERNAME" `
   --data-urlencode "password=YOUR_KITSU_PASSWORD"
   ```
-
-  Paste the returned token into the Android app's Profile screen and use
-  `https://kitsu.io` as the Kitsu server URL.
+  then paste your token into the android apps profile screen, as well as the kitsu url 'https://kitsu.io'
 
 ## Android app notes
 
@@ -175,40 +161,6 @@ Create the four secrets in the repository's **Settings > Secrets and variables >
 
 The workflow uses the GitHub run number as `versionCode`, which increases for each build, and the tag as `versionName`. Do not replace the release keystore: Android only permits updates when the application ID and signing key remain the same.
 
-### Android local development
-
-Start the backend on port 8080, then build and install the debug app from the
-`android` directory:
-
-```powershell
-.\gradlew.bat :app:installDebug
-```
-
-The default emulator URL is `http://10.0.2.2:8080/`. For a physical device or
-another server, pass the server URL as a Gradle property. The URL must end in
-`/`:
-
-```powershell
-.\gradlew.bat :app:installDebug -PpanelistBaseUrl=http://192.168.1.20:8080/
-```
-
-Debug builds allow cleartext HTTP for local development. Release builds require
-HTTPS.
-
 ## API
 
-See [`docs/api.md`](docs/api.md) for the complete endpoint list and integration
-details. A minimal authentication flow looks like this:
-
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"use-a-strong-password"}'
-
-curl -X POST http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"use-a-strong-password"}'
-
-curl http://localhost:8080/api/me \
-  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
-```
+See `docs/api.md`.

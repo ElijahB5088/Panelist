@@ -112,6 +112,7 @@ class MALProvider(TrackingProvider):
             if serialization:
                 first_serialization = serialization[0].get("node", serialization[0])
                 publisher = first_serialization.get("name")
+            picture = manga.get("main_picture") or {}
             normalized_media = NormalizedMedia(
                 id=f"mal:{manga_id}",
                 title=manga.get("title") or "Unknown",
@@ -120,8 +121,11 @@ class MALProvider(TrackingProvider):
                 publisher=publisher,
                 description=manga.get("synopsis"),
                 rating=self._number(manga.get("mean")),
+                source="mal",
+                source_id=str(manga_id),
                 media_type="manga",
-                image_url=(manga.get("main_picture") or {}).get("large") or (manga.get("main_picture") or {}).get("medium"),
+                image_url=picture.get("large") or picture.get("medium"),
+                source_url=f"https://myanimelist.net/manga/{manga_id}",
             )
             normalized.append(
                 (
