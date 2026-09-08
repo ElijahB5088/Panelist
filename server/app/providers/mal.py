@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import httpx
 
 from ..models import NormalizedMedia
-from .base import TrackingProvider
+from .base import TrackingProvider, valid_external_id
 
 
 @dataclass
@@ -95,7 +95,7 @@ class MALProvider(TrackingProvider):
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
         normalized: list[tuple[NormalizedMedia, dict]] = []
         for row in payload:
-            manga_id = row.get("node", {}).get("id") or row.get("id")
+            manga_id = valid_external_id(row.get("node", {}).get("id") or row.get("id"))
             manga = row.get("node", row)
             list_status = row.get("list_status") or manga.get("my_list_status") or {}
             if not manga_id:
@@ -122,7 +122,7 @@ class MALProvider(TrackingProvider):
                 description=manga.get("synopsis"),
                 rating=self._number(manga.get("mean")),
                 source="mal",
-                source_id=str(manga_id),
+                source_id=manga_id,
                 media_type="manga",
                 image_url=picture.get("large") or picture.get("medium"),
                 source_url=f"https://myanimelist.net/manga/{manga_id}",
@@ -131,6 +131,9 @@ class MALProvider(TrackingProvider):
                 (
                     normalized_media,
                     {
+                        "tracker_source": "mal",
+                        "tracker_media_id": manga_id,
+                        "tracker_item_id": valid_external_id(row.get("id")),
                         "status": self._normalize_status(list_status.get("status")),
                         "progress": int(list_status.get("num_chapters_read", 0) or 0),
                         "user_rating": self._number(list_status.get("score")),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 import re
 from urllib.parse import quote, urlparse
@@ -7,6 +8,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from ..metadata import MetadataResult
+from .base import valid_external_id
 
 
 class MetadataProvider(ABC):
@@ -34,16 +36,34 @@ class ComicVineProvider(MetadataProvider):
             "resources": "volume",
             "query": query,
             "limit": min(limit, 100),
-            "field_list": "id,name,deck,description,publisher,start_year,image,site_detail_url,person_credits",
+            "field_list": "id,name,deck,description,publisher,start_year,image,site_detail_url,api_detail_url,person_credits",
         }
         headers = {"User-Agent": self.user_agent}
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
             response = await client.get(self.base_url, params=params)
-        response.raise_for_status()
-        payload = response.json()
+            response.raise_for_status()
+            payload = response.json()
+            rows = await asyncio.gather(*(self._with_details(client, row) for row in payload.get("results", [])))
         if payload.get("status_code") != 1:
             raise RuntimeError(payload.get("error", "Comic Vine request failed"))
-        return [self._normalize(row) for row in payload.get("results", [])]
+        return [result for result in (self._normalize(row) for row in rows) if valid_external_id(result.source_id)]
+
+    async def _with_details(self, client: httpx.AsyncClient, row: dict) -> dict:
+        if row.get("person_credits") or not row.get("api_detail_url"):
+            return row
+        response = await client.get(
+            row["api_detail_url"],
+            params={
+                "api_key": self.api_key,
+                "format": "json",
+                "field_list": "id,name,deck,description,publisher,start_year,image,site_detail_url,api_detail_url,person_credits",
+            },
+        )
+        response.raise_for_status()
+        detail = response.json()
+        if detail.get("status_code") != 1:
+            return row
+        return {**row, **(detail.get("results") or {})}
 
     def _normalize(self, row: dict) -> MetadataResult:
         publisher = row.get("publisher") or {}
@@ -65,7 +85,7 @@ class ComicVineProvider(MetadataProvider):
         )
         return MetadataResult(
             source=self.name,
-            source_id=str(row["id"]),
+            source_id=valid_external_id(row.get("id")) or "",
             title=row.get("name") or "Untitled",
             creator=creator,
             publisher=publisher.get("name"),
@@ -93,12 +113,16 @@ class MetronProvider(MetadataProvider):
             response = await client.get(f"{self.api_url}/series/", params=params)
         response.raise_for_status()
         payload = response.json()
-        return [self._normalize(row) for row in payload.get("results", [])[:limit]]
+        return [
+            result
+            for result in (self._normalize(row) for row in payload.get("results", [])[:limit])
+            if valid_external_id(result.source_id)
+        ]
 
     def _normalize(self, row: dict) -> MetadataResult:
         publisher = row.get("publisher") or {}
         year = row.get("year_began")
-        source_id = str(row.get("id"))
+        source_id = valid_external_id(row.get("id")) or ""
         credits = row.get("creators") or row.get("credits") or []
         creator = next(
             (
@@ -140,13 +164,21 @@ class GCDProvider(MetadataProvider):
         if not query.strip() or limit <= 0:
             return []
         path_query = quote(query.strip(), safe="")
-        headers = {"User-Agent": self.user_agent}
+        headers = {"Accept": "application/json", "User-Agent": self.user_agent}
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
             response = await client.get(f"{self.base_url}/series/name/{path_query}/")
         response.raise_for_status()
         payload = response.json()
         rows = payload.get("results", []) if isinstance(payload, dict) else payload
-        return [self._normalize(row) for row in rows[:limit] if isinstance(row, dict)]
+        return [
+            result
+            for result in (
+                self._normalize(row)
+                for row in rows[:limit]
+                if isinstance(row, dict)
+            )
+            if valid_external_id(result.source_id)
+        ]
 
     def _normalize(self, row: dict) -> MetadataResult:
         api_url = row.get("api_url") or row.get("resource_url")
@@ -190,13 +222,17 @@ class OpenLibraryProvider(MetadataProvider):
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
             response = await client.get(self.base_url, params=params)
         response.raise_for_status()
-        return [self._normalize(row) for row in response.json().get("docs", [])]
+        return [
+            result
+            for result in (self._normalize(row) for row in response.json().get("docs", []))
+            if valid_external_id(result.source_id)
+        ]
 
     def _normalize(self, row: dict) -> MetadataResult:
         cover_id = row.get("cover_i")
         return MetadataResult(
             source=self.name,
-            source_id=row.get("key", "").removeprefix("/works/"),
+            source_id=valid_external_id(row.get("key", "").removeprefix("/works/")) or "",
             title=row.get("title") or "Untitled",
             creator=(row.get("author_name") or [None])[0],
             publisher=(row.get("publisher") or [None])[0],
@@ -229,7 +265,11 @@ class AniListProvider(MetadataProvider):
         body = response.json()
         if body.get("errors"):
             raise RuntimeError(body["errors"][0].get("message", "AniList request failed"))
-        return [self._normalize(row) for row in body.get("data", {}).get("Page", {}).get("media", [])]
+        return [
+            result
+            for result in (self._normalize(row) for row in body.get("data", {}).get("Page", {}).get("media", []))
+            if valid_external_id(result.source_id)
+        ]
 
     def _normalize(self, row: dict) -> MetadataResult:
         title = row.get("title") or {}
@@ -238,7 +278,7 @@ class AniListProvider(MetadataProvider):
         staff = row.get("staff", {}).get("edges", [])
         return MetadataResult(
             source=self.name,
-            source_id=str(row["id"]),
+            source_id=valid_external_id(row.get("id")) or "",
             title=title.get("english") or title.get("romaji") or title.get("native") or "Untitled",
             creator=(staff[0].get("node", {}).get("name", {}).get("full") if staff else None),
             genres=row.get("genres") or [],

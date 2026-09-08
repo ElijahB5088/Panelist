@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from ..models import NormalizedMedia
-from .base import TrackingProvider
+from .base import TrackingProvider, valid_external_id
 
 
 class FloppyProviderError(Exception):
@@ -81,18 +81,28 @@ class FloppyProvider(TrackingProvider):
                 None,
             )
             status = self._normalize_status(row.get("status"))
+            external_id = valid_external_id(
+                row.get("media_id") or media.get("media_id") or media.get("id") or row.get("id")
+            )
+            if not external_id:
+                continue
             normalized_media = NormalizedMedia(
-                id=str(row.get("media_id") or media.get("media_id") or media.get("id") or row.get("id")),
+                id=external_id,
                 title=media.get("title") or row.get("title") or "Unknown",
                 creator=media.get("creator") or row.get("creator") or row.get("source") or "Unknown",
                 genres=media.get("genres", row.get("genres", [])) or [],
                 publisher=media.get("publisher"),
                 description=media.get("description") or media.get("synopsis"),
                 rating=media.get("rating") or media.get("score"),
+                source="floppy",
+                source_id=external_id,
                 media_type=media_type,
                 image_url=image_url,
             )
             lib = {
+                "tracker_source": "floppy",
+                "tracker_media_id": external_id,
+                "tracker_item_id": valid_external_id(row.get("id")),
                 "status": status,
                 "progress": int(row.get("progress", 0) or 0),
                 "user_rating": row.get("score") or row.get("rating"),

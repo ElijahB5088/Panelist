@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import main
@@ -106,6 +107,63 @@ def test_recommendations_enrich_coverless_candidate(monkeypatch):
     assert item["image_url"] == "https://covers.example/candidate.jpg"
     assert item["source"] == "comicvine"
     assert main.conn.execute("SELECT image_url FROM media WHERE id = ?", (candidate_id,)).fetchone()[0] == item["image_url"]
+
+
+@pytest.mark.parametrize(
+    ("candidate_title", "candidate_creator", "candidate_type"),
+    [
+        ("Wrong Saga", "Creator", None),
+        ("Candidate Saga", "Other Creator", None),
+        ("Candidate Saga", "Creator", "comic"),
+    ],
+)
+def test_recommendations_reject_unverified_cover_matches(
+    monkeypatch,
+    candidate_title,
+    candidate_creator,
+    candidate_type,
+):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    candidate_id = f"{user_id}-candidate"
+    stored_type = "manga" if candidate_type else None
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, media_type, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (candidate_id, "Candidate Saga", "Creator", "science-fiction", 5.0, stored_type, None),
+    )
+    main.conn.commit()
+
+    async def grouped_search(query, limit=10):
+        return [
+            MetadataGroup(
+                group_id="candidate",
+                primary=MetadataResult(
+                    "comicvine",
+                    f"candidate-source-{user_id}",
+                    candidate_title,
+                    candidate_creator,
+                    image_url="https://covers.example/wrong.jpg",
+                    media_type=candidate_type,
+                ),
+                variants=[],
+            )
+        ]
+
+    monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
+
+    response = client.get("/api/recommendations", params={"limit": 10})
+
+    assert response.status_code == 200
+    item = next(item for item in response.json() if item["id"] == candidate_id)
+    assert item["image_url"] is None
+    assert tuple(
+        main.conn.execute(
+            "SELECT source, source_id, image_url FROM media WHERE id = ?", (candidate_id,)
+        ).fetchone()
+    ) == (None, None, None)
+    assert main.conn.execute(
+        "SELECT COUNT(*) FROM media_sources WHERE media_id = ?", (candidate_id,)
+    ).fetchone()[0] == 0
 
 
 def test_recommendations_keep_coverless_candidate_when_enrichment_times_out(monkeypatch):

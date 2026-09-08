@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
 from .config import settings
+from .metadata_mapping import compare_metadata
 from .metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary
 from .providers.metadata import AniListProvider, ComicVineProvider, GCDProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider, FloppyProviderError
@@ -217,19 +218,60 @@ def _metadata_group_response(group):
     }
 
 
+def _upsert_media_source(media_id, source, source_id, source_url=None):
+    if not source or not source_id:
+        return False
+    existing = conn.execute(
+        "SELECT media_id FROM media_sources WHERE source=? AND source_id=?",
+        (source, source_id),
+    ).fetchone()
+    if existing and existing[0] != media_id:
+        return False
+    conn.execute(
+        """
+        INSERT INTO media_sources (media_id, source, source_id, source_url)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(source, source_id) DO UPDATE SET
+          source_url=COALESCE(excluded.source_url, media_sources.source_url)
+        """,
+        (media_id, source, source_id, source_url),
+    )
+    return True
+
+
+def _media_source_available(media_id, source, source_id):
+    if not source or not source_id:
+        return True
+    existing = conn.execute(
+        "SELECT media_id FROM media_sources WHERE source=? AND source_id=?",
+        (source, source_id),
+    ).fetchone()
+    return not existing or existing[0] == media_id
+
+
 async def _recommendation_cover(row):
     if row[8] and row[8].strip():
         return row
     query = row[1] if not row[2] else f"{row[1]} {row[2]}"
     groups = await metadata_service.grouped_search(query, limit=5)
-    match = next(
-        (
-            covered_primary(group)
-            for group in groups
-            if covered_primary(group).image_url and covered_primary(group).image_url.strip()
-        ),
-        None,
-    )
+    match = None
+    for group in groups:
+        candidates = [group.primary, *group.variants]
+        for candidate in candidates:
+            if not candidate.image_url or not candidate.image_url.strip():
+                continue
+            comparison = compare_metadata(
+                candidate,
+                title=row[1],
+                creator=row[2],
+                media_type=row[11],
+                tracker_source=row[10],
+            )
+            if comparison.accepted:
+                match = candidate
+                break
+        if match:
+            break
     if not match:
         return row
     conn.execute(
@@ -240,6 +282,7 @@ async def _recommendation_cover(row):
         """,
         (match.source, match.source_id, match.image_url, match.source_url, match.media_type, row[0]),
     )
+    _upsert_media_source(row[0], match.source, match.source_id, match.source_url)
     conn.commit()
     return (*row[:6], match.source, match.source_id, match.image_url, match.source_url, row[10], row[11], row[12])
 
@@ -374,8 +417,14 @@ async def sync_user_library(user_id: int) -> None:
                 )
                 conn.commit()
                 return
+            conn.execute("BEGIN")
             added_media_ids: list[str] = []
             for media, lib in normalized:
+                if media.source and media.source_id:
+                    if not _media_source_available(media.id, media.source, media.source_id):
+                        raise ValueError(
+                            f"External media identity {media.source}:{media.source_id} belongs to another media"
+                        )
                 added_media_ids.append(media.id)
                 conn.execute(
                     """
@@ -397,6 +446,7 @@ async def sync_user_library(user_id: int) -> None:
                         lib.get("tracker_media_id"), lib.get("tracker_item_id"),
                     ),
                 )
+                _upsert_media_source(media.id, media.source, media.source_id, media.source_url)
                 conn.execute(
                     """
                     INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent, added_at)
@@ -433,6 +483,7 @@ async def sync_user_library(user_id: int) -> None:
             )
             conn.commit()
         except Exception as exc:
+            conn.rollback()
             error_message = str(exc)[:240] or "Unknown sync error"
             conn.execute(
                 "UPDATE tracker_integrations SET sync_status='error', sync_error=? WHERE user_id = ?",

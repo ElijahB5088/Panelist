@@ -41,7 +41,20 @@ def test_mal_normalization_maps_manga_list_status():
     assert media.publisher == "Young Animal"
     assert media.media_type == "manga"
     assert media.image_url == "https://example.test/berserk.jpg"
-    assert library == {"status": "reading", "progress": 30, "user_rating": 10.0}
+    assert library == {
+        "tracker_source": "mal",
+        "tracker_media_id": "2",
+        "tracker_item_id": None,
+        "status": "reading",
+        "progress": 30,
+        "user_rating": 10.0,
+    }
+
+
+def test_mal_normalization_skips_placeholder_ids():
+    normalized = MALProvider().normalize_library([{"node": {"id": "None", "title": "Invalid"}}])
+
+    assert normalized == []
 
 
 def test_mal_statuses_are_manga_statuses():

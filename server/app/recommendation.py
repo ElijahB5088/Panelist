@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-import re
 import sqlite3
 
+from .metadata_mapping import normalize_identity, normalize_media_type
 from .models import RecommendationResult
 
 
@@ -18,7 +18,7 @@ def _normalize(value: str | None) -> str:
 
 
 def _normalize_title(value: str | None) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", (value or "").casefold()).split())
+    return normalize_identity(value)
 
 
 def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
@@ -38,16 +38,7 @@ def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
 
 
 def _media_type(value: str | None, source: str | None = None, tracker_source: str | None = None) -> str | None:
-    normalized = _normalize(value)
-    if normalized in {"comic", "comics"}:
-        return "comic"
-    if normalized in {"manga", "manhwa", "manhua"}:
-        return "manga"
-    if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
-        return "manga"
-    if source in {"comicvine", "metron", "openlibrary"} or tracker_source == "floppy":
-        return "comic"
-    return normalized or None
+    return normalize_media_type(value, source=source, tracker_source=tracker_source) or None
 
 
 def build_recommendations(

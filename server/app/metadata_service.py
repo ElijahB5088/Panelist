@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import re
 import time
 from collections import OrderedDict, defaultdict, deque
 
 from .metadata import MetadataGroup, MetadataResult
+from .metadata_mapping import map_metadata, normalize_identity
 from .providers.metadata import MetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ def group_metadata(
     groups: dict[str, list[MetadataResult]] = {}
     order: list[str] = []
     for result in results:
-        key = _metadata_group_key(result)
+        key = map_metadata(result).identity.key
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -133,11 +133,8 @@ def covered_primary(group: MetadataGroup) -> MetadataResult:
 
 
 def _metadata_group_key(result: MetadataResult) -> str:
-    title = _normalize_identity(result.title)
-    creator = _normalize_identity(result.creator or "")
-    year = (result.release_date or "")[:4]
-    return "|".join((title, creator, year))
+    return map_metadata(result).identity.key
 
 
 def _normalize_identity(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    return normalize_identity(value)
