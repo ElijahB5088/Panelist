@@ -1,3 +1,5 @@
+import pytest
+
 from app.metadata import MetadataResult
 from app.metadata_mapping import compare_metadata, map_metadata, normalize_media_type
 
@@ -31,6 +33,14 @@ def test_mapping_does_not_invent_missing_identity_fields():
 def test_mapping_normalizes_media_type_aliases():
     assert normalize_media_type("manhwa") == "manga"
     assert normalize_media_type("comics") == "comic"
+
+
+@pytest.mark.parametrize(
+    ("source", "tracker_source"),
+    [("anilist", None), ("kitsu", None), ("mal", None), (None, "kitsu"), (None, "mal")],
+)
+def test_mapping_prefers_authoritative_manga_sources(source, tracker_source):
+    assert normalize_media_type("comic", source=source, tracker_source=tracker_source) == "manga"
 
 
 def test_mapping_preserves_non_latin_identity_text():

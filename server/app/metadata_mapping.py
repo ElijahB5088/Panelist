@@ -89,12 +89,12 @@ def normalize_media_type(
     source: str | None = None,
     tracker_source: str | None = None,
 ) -> str:
+    if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
+        return "manga"
     normalized = normalize_identity(value)
     if normalized in {"comic", "comics"}:
         return "comic"
     if normalized in {"manga", "manhwa", "manhua"}:
-        return "manga"
-    if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
         return "manga"
     if source in {"comicvine", "metron", "openlibrary"} or tracker_source == "floppy":
         return "comic"

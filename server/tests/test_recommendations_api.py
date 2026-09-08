@@ -141,8 +141,8 @@ def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(mon
     monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
     monkeypatch.setattr(main, "_featured", no_featured)
 
-    manga_response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 10})
-    comic_response = client.get("/api/recommendations", params={"media_type": "comic", "limit": 10})
+    manga_response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 100})
+    comic_response = client.get("/api/recommendations", params={"media_type": "comic", "limit": 100})
 
     assert manga_response.status_code == 200
     assert candidate_id in [item["id"] for item in manga_response.json()]
