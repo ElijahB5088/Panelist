@@ -1,10 +1,15 @@
 # Panelist
 Panelist is a privacy-first Android recommendation app + self-hostable backend for comics, manga, and graphic novels.
 <div align="center">
+  
   [![Build Status](https://img.shields.io/github/actions/workflow/status/elijahb5088/panelist/publish-image.yml?branch=main&style=for-the-badge&logo=github&label=Build)](https://github.com/elijahb5088/panelist/actions/workflows/publish-image.yml)
+  
   [![License](https://img.shields.io/github/license/elijahb5088/panelist?style=for-the-badge&color=green)](https://github.com/elijahb5088/panelist/blob/main/LICENSE)
+
   [![GitHub Stars](https://img.shields.io/github/stars/elijahb5088/panelist?style=for-the-badge&logo=github&color=yellow)](https://github.com/elijahb5088/panelist/stargazers)
+
 </div>
+
 ## Repository layout
 
 ```
@@ -42,6 +47,7 @@ for future database support and is not used by the server.
 2. Start server:
 
 ```bash
+cp docker-compose.yml docker-compose.yml
 docker compose pull
 docker compose up -d
 ```
