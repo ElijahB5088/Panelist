@@ -78,6 +78,28 @@ def test_completed_unrated_items_seed_recommendations_and_normalize_genres():
     assert "a" in [recommendation.media_id for recommendation in recs]
 
 
+def test_planned_items_remain_eligible_but_progressed_items_do_not():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('planned', 'Planned', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'planned', 'planned', 0, NULL)"
+    )
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('progressed', 'Progressed', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'progressed', 'reading', 1, NULL)"
+    )
+    conn.commit()
+
+    ids = [recommendation.media_id for recommendation in build_recommendations(conn, 1, 10)]
+
+    assert "planned" in ids
+    assert "progressed" not in ids
+
+
 def test_late_dropped_items_create_a_negative_genre_signal():
     conn = setup_db()
     conn.execute(

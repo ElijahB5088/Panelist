@@ -32,7 +32,7 @@ class ComicVineProvider(MetadataProvider):
             "resources": "volume",
             "query": query,
             "limit": min(limit, 100),
-            "field_list": "id,name,deck,description,publisher,start_year,image,site_detail_url",
+            "field_list": "id,name,deck,description,publisher,start_year,image,site_detail_url,person_credits",
         }
         headers = {"User-Agent": self.user_agent}
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
@@ -47,10 +47,25 @@ class ComicVineProvider(MetadataProvider):
         publisher = row.get("publisher") or {}
         image = row.get("image") or {}
         year = row.get("start_year")
+        credits = row.get("person_credits") or row.get("credits") or []
+        creator = next(
+            (
+                credit.get("name")
+                or (credit.get("person") or {}).get("name")
+                for credit in credits
+                if isinstance(credit, dict)
+                and (
+                    credit.get("name")
+                    or (credit.get("person") or {}).get("name")
+                )
+            ),
+            None,
+        )
         return MetadataResult(
             source=self.name,
             source_id=str(row["id"]),
             title=row.get("name") or "Untitled",
+            creator=creator,
             publisher=publisher.get("name"),
             description=row.get("description") or row.get("deck"),
             release_date=f"{year}-01-01" if year else None,
@@ -82,10 +97,27 @@ class MetronProvider(MetadataProvider):
         publisher = row.get("publisher") or {}
         year = row.get("year_began")
         source_id = str(row.get("id"))
+        credits = row.get("creators") or row.get("credits") or []
+        creator = next(
+            (
+                credit.get("name")
+                or (credit.get("creator") or {}).get("name")
+                or (credit.get("person") or {}).get("name")
+                for credit in credits
+                if isinstance(credit, dict)
+                and (
+                    credit.get("name")
+                    or (credit.get("creator") or {}).get("name")
+                    or (credit.get("person") or {}).get("name")
+                )
+            ),
+            None,
+        )
         return MetadataResult(
             source=self.name,
             source_id=source_id,
             title=row.get("series") or row.get("name") or "Untitled",
+            creator=creator,
             genres=[genre.get("name", genre) for genre in row.get("genres", []) if genre],
             publisher=publisher.get("name"),
             description=row.get("desc"),

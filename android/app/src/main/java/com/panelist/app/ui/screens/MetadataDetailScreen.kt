@@ -34,7 +34,7 @@ import com.panelist.app.data.session.SessionStore
 
 @Composable
 fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = null, onBack: () -> Unit) {
-    val preferredSource = sessionStore?.preferredSource()
+    var preferredSource by remember { mutableStateOf(sessionStore?.preferredSource()) }
     val preferredVariant = group.preferred(preferredSource)
     var selectedVariantKey by remember(group.id, preferredSource) {
         mutableStateOf(variantKey(preferredVariant.source, preferredVariant.source_id))
@@ -86,7 +86,10 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
                 )
                 Text("Source: ${result.source}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
                 androidx.compose.material3.Button(
-                    onClick = { sessionStore?.savePreferredSource(result.source) },
+                    onClick = {
+                        preferredSource = result.source
+                        sessionStore?.savePreferredSource(result.source)
+                    },
                     enabled = sessionStore != null
                 ) { Text(if (preferredSource == result.source) "Preferred copy" else "Use this copy by default") }
             }

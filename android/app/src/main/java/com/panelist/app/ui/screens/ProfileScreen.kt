@@ -15,6 +15,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.panelist.app.data.model.FloppyConfig
+import com.panelist.app.data.model.FloppySyncSettings
 import com.panelist.app.data.model.KitsuConfig
 import com.panelist.app.data.model.ProfileResponse
 import com.panelist.app.data.repository.ProfileRepository
@@ -48,6 +50,8 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
     var preferredSource by remember { mutableStateOf(sessionStore?.preferredSource()) }
     var trackerChoice by remember { mutableStateOf("floppy") }
     var connected by remember { mutableStateOf(false) }
+    var autoSyncEnabled by remember { mutableStateOf(false) }
+    var autoSyncInterval by remember { mutableStateOf("60") }
 
     LaunchedEffect(repository) {
         if (repository != null) runCatching { repository.profile() }.onSuccess { loaded ->
@@ -55,6 +59,8 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
             serverUrl = loaded.connected_tracker?.server_url.orEmpty()
             trackerChoice = loaded.connected_tracker?.provider ?: "floppy"
             connected = loaded.connected_tracker?.connected == true
+            autoSyncEnabled = loaded.connected_tracker?.auto_sync_enabled == true
+            autoSyncInterval = loaded.connected_tracker?.auto_sync_interval_minutes?.toString() ?: "60"
             if (trackerChoice == "kitsu" && serverUrl.isBlank()) serverUrl = "https://kitsu.io"
         }
     }
@@ -160,6 +166,59 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                         }
                     }
                 ) { Text("Sync library") }
+                if (trackerChoice == "floppy" && connected && repository != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Automatic Floppy sync")
+                            Text("Keep your library current on the server.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = autoSyncEnabled,
+                            onCheckedChange = { enabled ->
+                                val activeRepository = repository ?: return@Switch
+                                val interval = autoSyncInterval.toIntOrNull() ?: 60
+                                scope.launch {
+                                    busy = true
+                                    status = runCatching {
+                                        val updated = activeRepository.updateFloppySyncSettings(FloppySyncSettings(enabled, interval))
+                                        autoSyncEnabled = updated.enabled
+                                        autoSyncInterval = updated.interval_minutes.toString()
+                                        "Automatic sync ${if (updated.enabled) "enabled" else "disabled"}."
+                                    }.getOrElse { it.message ?: "Could not update automatic sync." }
+                                    busy = false
+                                }
+                            },
+                            enabled = !busy
+                        )
+                    }
+                    OutlinedTextField(
+                        value = autoSyncInterval,
+                        onValueChange = { autoSyncInterval = it.filter(Char::isDigit) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Sync interval (minutes)") },
+                        singleLine = true
+                    )
+                    Button(
+                        enabled = !busy && autoSyncInterval.toIntOrNull() != null,
+                        onClick = {
+                            val activeRepository = repository ?: return@Button
+                            scope.launch {
+                                busy = true
+                                status = runCatching {
+                                    val updated = activeRepository.updateFloppySyncSettings(
+                                        FloppySyncSettings(autoSyncEnabled, autoSyncInterval.toInt())
+                                    )
+                                    autoSyncInterval = updated.interval_minutes.toString()
+                                    "Sync interval updated."
+                                }.getOrElse { it.message ?: "Could not update sync interval." }
+                                busy = false
+                            }
+                        }
+                    ) { Text("Save sync interval") }
+                }
                 status?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
             }
         }

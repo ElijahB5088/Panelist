@@ -214,6 +214,33 @@ def _metadata_group_response(group):
     }
 
 
+async def _recommendation_cover(row):
+    if row[8] and row[8].strip():
+        return row
+    query = row[1] if not row[2] else f"{row[1]} {row[2]}"
+    groups = await metadata_service.grouped_search(query, limit=5)
+    match = next(
+        (
+            covered_primary(group)
+            for group in groups
+            if covered_primary(group).image_url and covered_primary(group).image_url.strip()
+        ),
+        None,
+    )
+    if not match:
+        return None
+    conn.execute(
+        """
+        UPDATE media
+        SET source=?, source_id=?, image_url=?, source_url=?, media_type=COALESCE(media_type, ?)
+        WHERE id=?
+        """,
+        (match.source, match.source_id, match.image_url, match.source_url, match.media_type, row[0]),
+    )
+    conn.commit()
+    return (*row[:6], match.source, match.source_id, match.image_url, match.source_url, row[10], row[11], row[12])
+
+
 class Credentials(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=6)
@@ -918,6 +945,8 @@ async def _featured(
             if group.group_id not in seen:
                 seen.add(group.group_id)
                 item = _metadata_group_response(group)
+                if not item["primary"].get("image_url"):
+                    continue
                 if excluded_titles and _normalize_title(item["primary"]["title"]) in excluded_titles:
                     continue
                 if media_type and _media_type(item["primary"].get("media_type"), item["primary"].get("source")) != media_type:
@@ -972,6 +1001,12 @@ async def recommendations(
         ids,
     ).fetchall()
     by_id = {r[0]: r for r in rows}
+    enriched_rows = await asyncio.gather(*(_recommendation_cover(by_id[rec.media_id]) for rec in recs if rec.media_id in by_id))
+    by_id = {
+        row[0]: row
+        for row in enriched_rows
+        if row is not None
+    }
     return [
         {
             "id": rec.media_id,

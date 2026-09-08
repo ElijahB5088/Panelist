@@ -11,6 +11,7 @@ def test_comicvine_volume_normalization():
             "start_year": 2012,
             "image": {"original_url": "https://example.test/saga.jpg"},
             "site_detail_url": "https://comicvine.gamespot.com/saga/",
+            "person_credits": [{"name": "Brian K. Vaughan", "role": "writer"}],
         }
     )
 
@@ -19,6 +20,7 @@ def test_comicvine_volume_normalization():
     assert result.publisher == "Image"
     assert result.release_date == "2012-01-01"
     assert result.image_url.endswith("saga.jpg")
+    assert result.creator == "Brian K. Vaughan"
 
 
 def test_openlibrary_normalization():
@@ -71,6 +73,7 @@ def test_metron_series_normalization():
             "desc": "A family in space.",
             "image": "https://images.example/saga.jpg",
             "resource_url": "https://metron.example/series/42/",
+            "creators": [{"name": "Brian K. Vaughan"}],
         }
     )
 
@@ -80,3 +83,4 @@ def test_metron_series_normalization():
     assert result.genres == ["Science Fiction"]
     assert result.release_date == "2012-01-01"
     assert result.image_url.endswith("saga.jpg")
+    assert result.creator == "Brian K. Vaughan"

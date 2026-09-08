@@ -9,12 +9,12 @@ def test_featured_excludes_normalized_library_titles(monkeypatch):
     groups = [
         MetadataGroup(
             group_id="read",
-            primary=MetadataResult("fake", "read", "  SAGA  "),
+            primary=MetadataResult("fake", "read", "  SAGA  ", image_url="https://covers.example/saga.jpg"),
             variants=[],
         ),
         MetadataGroup(
             group_id="unread",
-            primary=MetadataResult("fake", "unread", "Monstress"),
+            primary=MetadataResult("fake", "unread", "Monstress", image_url="https://covers.example/monstress.jpg"),
             variants=[],
         ),
     ]

@@ -30,6 +30,7 @@ def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
             FROM user_library ul
             JOIN media m ON m.id = ul.media_id
             WHERE ul.user_id = ?
+              AND (ul.status = 'completed' OR COALESCE(ul.progress, 0) > 0)
             """,
             (user_id,),
         ).fetchall()
@@ -65,8 +66,19 @@ def build_recommendations(
         (user_id,),
     ).fetchall()
 
-    already = {row[0] for row in conn.execute("SELECT media_id FROM user_library WHERE user_id = ?", (user_id,)).fetchall()}
-    already_titles = {_normalize_title(row[0]) for row in library}
+    already = {
+        row[0]
+        for row in conn.execute(
+            """
+            SELECT media_id
+            FROM user_library
+            WHERE user_id = ?
+              AND (status = 'completed' OR COALESCE(progress, 0) > 0)
+            """,
+            (user_id,),
+        ).fetchall()
+    }
+    already_titles = library_title_keys(conn, user_id)
 
     dismissed = {
         row[0]
