@@ -56,7 +56,10 @@ interface PanelistApi {
     ): List<MetadataGroup>
 
     @GET("/api/library")
-    suspend fun library(@Query("status") status: String? = null): List<LibraryItem>
+    suspend fun library(
+        @Query("status") status: String? = null,
+        @Query("sort") sort: String = "title_asc"
+    ): List<LibraryItem>
 
     @GET("/api/profile")
     suspend fun profile(): ProfileResponse

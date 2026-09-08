@@ -292,8 +292,10 @@ async def sync_user_library(user_id: int) -> None:
             normalized = active_provider.normalize_library(payload)
             if payload and not normalized:
                 raise ValueError("Tracker returned entries, but none were recognized as supported library media")
-            conn.execute("DELETE FROM user_library WHERE user_id = ?", (user_id,))
+            synced_at = datetime.now(timezone.utc)
+            added_media_ids: list[str] = []
             for media, lib in normalized:
+                added_media_ids.append(media.id)
                 conn.execute(
                     """
                     INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, image_url, source_url, tracker_source, tracker_media_id, tracker_item_id)
@@ -316,21 +318,29 @@ async def sync_user_library(user_id: int) -> None:
                 )
                 conn.execute(
                     """
-                    INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent, added_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id, media_id) DO UPDATE SET
                       status=excluded.status, progress=excluded.progress, user_rating=excluded.user_rating,
                       progress_max=excluded.progress_max, progress_unit=excluded.progress_unit,
-                      progress_scope=excluded.progress_scope, progress_percent=excluded.progress_percent
+                      progress_scope=excluded.progress_scope, progress_percent=excluded.progress_percent,
+                      added_at=COALESCE(user_library.added_at, excluded.added_at)
                     """,
                     (
                         user_id, media.id, lib["status"], lib["progress"], lib["user_rating"],
                         lib.get("progress_max"), lib.get("progress_unit"), lib.get("progress_scope"),
-                        lib.get("progress_percent"),
+                        lib.get("progress_percent"), synced_at.isoformat(),
                     ),
                 )
 
-            synced_at = datetime.now(timezone.utc)
+            if added_media_ids:
+                placeholders = ", ".join("?" for _ in added_media_ids)
+                conn.execute(
+                    f"DELETE FROM user_library WHERE user_id = ? AND media_id NOT IN ({placeholders})",
+                    [user_id, *added_media_ids],
+                )
+            else:
+                conn.execute("DELETE FROM user_library WHERE user_id = ?", (user_id,))
             next_sync_at = (
                 (synced_at + timedelta(minutes=row[4])).isoformat()
                 if row[3]
@@ -644,7 +654,18 @@ def sync_status(user=Depends(user_from_auth)):
 
 
 @app.get("/api/library")
-def library(user=Depends(user_from_auth), status: str | None = None):
+def library(user=Depends(user_from_auth), status: str | None = None, sort: str = "title_asc"):
+    sort_order = {
+        "title_asc": "m.title COLLATE NOCASE ASC, ul.media_id ASC",
+        "title_desc": "m.title COLLATE NOCASE DESC, ul.media_id ASC",
+        "rating_desc": "ul.user_rating IS NULL ASC, ul.user_rating DESC, m.title COLLATE NOCASE ASC, ul.media_id ASC",
+        "rating_asc": "ul.user_rating IS NULL ASC, ul.user_rating ASC, m.title COLLATE NOCASE ASC, ul.media_id ASC",
+        "progress_desc": "ul.progress_percent IS NULL ASC, ul.progress_percent DESC, m.title COLLATE NOCASE ASC, ul.media_id ASC",
+        "progress_asc": "ul.progress_percent IS NULL ASC, ul.progress_percent ASC, m.title COLLATE NOCASE ASC, ul.media_id ASC",
+        "added_desc": "ul.added_at IS NULL ASC, ul.added_at DESC, m.title COLLATE NOCASE ASC, ul.media_id ASC",
+    }
+    if sort not in sort_order:
+        raise HTTPException(400, "Unsupported library sort")
     query = """
             SELECT ul.media_id, ul.status, ul.progress, ul.progress_max, ul.progress_unit,
                          ul.progress_scope, ul.progress_percent, ul.user_rating, m.title, m.creator,
@@ -660,6 +681,7 @@ def library(user=Depends(user_from_auth), status: str | None = None):
     elif status:
         query += " AND ul.status = ?"
         params.append(status)
+    query += f" ORDER BY {sort_order[sort]}"
     rows = conn.execute(query, params).fetchall()
     return [
         {

@@ -16,7 +16,7 @@ Implemented endpoints:
 - `GET /api/search?q=...`
 - `GET /api/metadata/search?q=...&limit=10`
 - `GET /api/featured?surface=discover|home&limit=10`
-- `GET /api/library`
+- `GET /api/library?status=reading&sort=title_asc`
 - `GET /api/history`
 - `GET /api/ratings`
 - `POST /api/integrations/floppy`
@@ -41,6 +41,13 @@ runs due syncs in the background; failures remain recorded in the integration
 status and are retried on the next interval.
 
 Authentication: bearer token issued by `/api/auth/login`.
+
+`GET /api/library` accepts the optional `status` filter (`reading`, `completed`,
+`planned`, `dropped`, or `rated`) and `sort` order. Sort values are
+`title_asc` (the default), `title_desc`, `rating_desc`, `rating_asc`,
+`progress_desc`, `progress_asc`, and `added_desc`. Missing ratings or progress
+values are placed after populated values. `added_desc` orders by when Panelist
+first observed the item in the user's library.
 
 MAL integration uses server-managed OAuth with plain PKCE. Set `MAL_CLIENT_ID`,
 `MAL_CLIENT_SECRET` when provided by MyAnimeList, and register `MAL_REDIRECT_URI`.

@@ -1,6 +1,7 @@
 package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,9 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,16 +35,27 @@ import com.panelist.app.data.repository.LibraryRepository
 @Composable
 fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryItem) -> Unit = {}) {
     val statuses = listOf("all", "reading", "completed", "planned", "dropped", "rated")
+    val sorts = listOf(
+        "title_asc" to "Title A-Z",
+        "title_desc" to "Title Z-A",
+        "rating_desc" to "Highest rated",
+        "rating_asc" to "Lowest rated",
+        "progress_desc" to "Most progress",
+        "progress_asc" to "Least progress",
+        "added_desc" to "Recently added"
+    )
     var selectedStatus by remember { mutableStateOf(statuses.first()) }
+    var selectedSort by remember { mutableStateOf(sorts.first().first) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(selectedStatus, repository) {
+    LaunchedEffect(selectedStatus, selectedSort, repository) {
         if (repository == null) return@LaunchedEffect
         loading = true
         error = null
-        runCatching { repository.library(selectedStatus.takeUnless { it == "all" }) }
+        runCatching { repository.library(selectedStatus.takeUnless { it == "all" }, selectedSort) }
             .onSuccess { items = it }
             .onFailure { error = "Your library is unavailable right now." }
         loading = false
@@ -52,6 +67,23 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             statuses.forEach { status ->
                 FilterChip(selected = selectedStatus == status, onClick = { selectedStatus = status }, label = { Text(status.replaceFirstChar { it.uppercase() }) })
+            }
+        }
+        Box {
+            val selectedSortLabel = sorts.first { it.first == selectedSort }.second
+            TextButton(onClick = { sortMenuExpanded = true }) {
+                Text("Sort: $selectedSortLabel")
+            }
+            DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                sorts.forEach { (sort, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            selectedSort = sort
+                            sortMenuExpanded = false
+                        }
+                    )
+                }
             }
         }
         when {
