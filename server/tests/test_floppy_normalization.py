@@ -36,11 +36,27 @@ def test_floppy_envelope_and_statuses():
 
     assert provider.fetch_library
     normalized = provider.normalize_library([
-        {"media_id": "x2", "media_type": "comic", "status": 2, "progress": 100, "item": {"title": "Done"}},
-        {"media_id": "x3", "media_type": "manga", "status": 5, "progress": 0, "item": {"title": "Queued"}},
+        {"media_id": "x2", "media_type": "comic", "status": 3, "progress": 100, "item": {"title": "Done"}},
+        {"media_id": "x3", "media_type": "manga", "status": 0, "progress": 0, "item": {"title": "Queued"}},
     ])
 
     assert [library["status"] for _, library in normalized] == ["completed", "planned"]
+
+
+def test_floppy_anime_payload_is_excluded():
+    provider = FloppyProvider()
+
+    normalized = provider.normalize_library([
+        {
+            "media_id": "anime-1",
+            "media_type": "anime",
+            "status": 1,
+            "progress": 4,
+            "item": {"title": "Current Anime"},
+        }
+    ])
+
+    assert normalized == []
 
 
 def test_floppy_normalization_excludes_other_media_types():

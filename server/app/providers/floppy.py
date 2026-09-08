@@ -107,9 +107,9 @@ class FloppyProvider(TrackingProvider):
         except (TypeError, ValueError):
             return str(status or "planned").lower()
         return {
+            0: "planned",
             1: "reading",
-            2: "completed",
-            3: "planned",
+            2: "reading",
+            3: "completed",
             4: "dropped",
-            5: "planned",
         }.get(numeric_status, "planned")

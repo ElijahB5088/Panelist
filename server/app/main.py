@@ -331,9 +331,19 @@ async def sync_user_library(user_id: int) -> None:
             else:
                 payload = await active_provider.fetch_library(row[1], credential)
             normalized = active_provider.normalize_library(payload)
-            if payload and not normalized:
-                raise ValueError("Tracker returned entries, but none were recognized as supported library media")
             synced_at = datetime.now(timezone.utc)
+            if payload and not normalized:
+                next_sync_at = (
+                    (synced_at + timedelta(minutes=row[4])).isoformat()
+                    if row[3]
+                    else None
+                )
+                conn.execute(
+                    "UPDATE tracker_integrations SET last_sync_at=?, next_sync_at=?, sync_status='idle', sync_error=NULL WHERE user_id = ?",
+                    (synced_at.isoformat(), next_sync_at, user_id),
+                )
+                conn.commit()
+                return
             added_media_ids: list[str] = []
             for media, lib in normalized:
                 added_media_ids.append(media.id)

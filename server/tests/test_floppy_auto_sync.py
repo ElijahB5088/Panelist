@@ -82,3 +82,33 @@ def test_due_runner_only_calls_enabled_floppy_integrations(monkeypatch):
     asyncio.run(main.run_due_auto_syncs())
 
     assert calls == [user_id]
+
+
+def test_floppy_sync_ignores_unsupported_media_without_clearing_library(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+    user_id = client.get("/api/me").json()["id"]
+    media_id = f"existing-{user_id}"
+    main.conn.execute("INSERT INTO media (id, title, media_type) VALUES (?, ?, ?)", (media_id, "Existing Comic", "comic"))
+    main.conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status) VALUES (?, ?, ?)",
+        (user_id, media_id, "reading"),
+    )
+    main.conn.commit()
+
+    async def fake_fetch_library(server_url, api_token):
+        return [{"media_id": "anime-1", "media_type": "anime", "item": {"title": "Anime"}}]
+
+    monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", fake_fetch_library)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 200
+    rows = main.conn.execute(
+        "SELECT media_id FROM user_library WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    assert [row[0] for row in rows] == [media_id]
+    assert client.get("/api/sync/status").json()["error"] is None
