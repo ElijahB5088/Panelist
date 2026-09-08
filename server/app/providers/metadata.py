@@ -167,9 +167,12 @@ class GCDProvider(MetadataProvider):
         headers = {"Accept": "application/json", "User-Agent": self.user_agent}
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
             response = await client.get(f"{self.base_url}/series/name/{path_query}/")
-        response.raise_for_status()
-        payload = response.json()
-        rows = payload.get("results", []) if isinstance(payload, dict) else payload
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload.get("results", []) if isinstance(payload, dict) else payload
+            rows = await asyncio.gather(
+                *(self._with_issue_details(client, row) for row in rows[:limit] if isinstance(row, dict))
+            )
         return [
             result
             for result in (
@@ -180,6 +183,57 @@ class GCDProvider(MetadataProvider):
             if valid_external_id(result.source_id)
         ]
 
+    async def _with_issue_details(self, client: httpx.AsyncClient, row: dict) -> dict:
+        active_issues = row.get("active_issues") or []
+        issue_url = next(
+            (
+                issue.get("api_url") or issue.get("resource_url")
+                if isinstance(issue, dict)
+                else issue
+                for issue in active_issues
+                if (isinstance(issue, dict) and (issue.get("api_url") or issue.get("resource_url")))
+                or isinstance(issue, str)
+            ),
+            None,
+        )
+        if not issue_url:
+            return row
+        try:
+            response = await client.get(issue_url)
+            response.raise_for_status()
+            issue = response.json()
+            if isinstance(issue, dict) and isinstance(issue.get("results"), dict):
+                issue = issue["results"]
+            if not isinstance(issue, dict):
+                return row
+            description = next(
+                (
+                    story.get("synopsis")
+                    for story in (issue.get("story_set") or issue.get("stories") or [])
+                    if isinstance(story, dict) and story.get("synopsis")
+                ),
+                None,
+            )
+            return {
+                **row,
+                "description": description or issue.get("notes") or row.get("notes"),
+                "image_url": self._cover_url(issue.get("cover")),
+            }
+        except Exception:
+            return row
+
+    @staticmethod
+    def _cover_url(value: object) -> str | None:
+        if isinstance(value, dict):
+            value = value.get("url") or value.get("image_url")
+        if not isinstance(value, str):
+            return None
+        markdown_match = re.search(r"\]\((https?://[^)]+)\)", value)
+        if markdown_match:
+            return markdown_match.group(1).rstrip(".,")
+        match = re.search(r"https?://[^\s)\]]+", value)
+        return match.group(0).rstrip(".,") if match else None
+
     def _normalize(self, row: dict) -> MetadataResult:
         api_url = row.get("api_url") or row.get("resource_url")
         source_id = self._source_id(api_url)
@@ -189,7 +243,9 @@ class GCDProvider(MetadataProvider):
             source=self.name,
             source_id=source_id,
             title=row.get("name") or "Untitled",
+            description=row.get("description") or row.get("notes"),
             release_date=f"{year}-01-01" if year else None,
+            image_url=row.get("image_url"),
             source_url=source_url,
             media_type="comic",
         )

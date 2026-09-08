@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -174,7 +175,7 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
     }
     Surface(modifier = modifier.fillMaxWidth(), onClick = onClick, shape = RoundedCornerShape(24.dp), tonalElevation = 4.dp) {
         Column {
-            Box(modifier = Modifier.fillMaxWidth().height(270.dp).background(accent), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(accent), contentAlignment = Alignment.Center) {
                 Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
                 Text("COVER PREVIEW", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge)
                 SubcomposeAsyncImage(

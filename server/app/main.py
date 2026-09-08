@@ -264,7 +264,7 @@ async def _recommendation_cover(row):
                 candidate,
                 title=row[1],
                 creator=row[2],
-                media_type=row[11],
+                media_type=_media_type(row[11], row[6], row[10]),
                 tracker_source=row[10],
             )
             if comparison.accepted:

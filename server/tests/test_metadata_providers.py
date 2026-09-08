@@ -137,6 +137,90 @@ def test_gcd_series_normalization():
     assert result.media_type == "comic"
 
 
+@pytest.mark.anyio
+async def test_gcd_search_enriches_results_with_issue_metadata(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            if "/series/name/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "api_url": "https://www.comics.org/api/series/7096/",
+                                "name": "Batman",
+                                "year_began": 1940,
+                                "active_issues": [{"api_url": "https://www.comics.org/api/issue/1/"}],
+                            }
+                        ]
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "results": {
+                        "cover": "[https://images.example/batman.jpg](https://images.example/batman.jpg)",
+                        "story_set": [{"synopsis": "The Dark Knight protects Gotham."}],
+                    }
+                },
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr("app.providers.metadata.httpx.AsyncClient", FakeClient)
+    results = await GCDProvider().search("Batman", limit=1)
+
+    assert results[0].image_url == "https://images.example/batman.jpg"
+    assert results[0].description == "The Dark Knight protects Gotham."
+
+
+@pytest.mark.anyio
+async def test_gcd_search_keeps_series_when_issue_enrichment_fails(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            if "/series/name/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "api_url": "https://www.comics.org/api/series/7096/",
+                                "name": "Batman",
+                                "active_issues": [{"api_url": "https://www.comics.org/api/issue/1/"}],
+                            }
+                        ]
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            raise httpx.ConnectError("offline", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr("app.providers.metadata.httpx.AsyncClient", FakeClient)
+    results = await GCDProvider().search("Batman", limit=1)
+
+    assert len(results) == 1
+    assert results[0].source_id == "7096"
+    assert results[0].image_url is None
+    assert results[0].description is None
+
+
 def test_metadata_normalizers_mark_missing_ids_invalid():
     assert ComicVineProvider("key")._normalize({"name": "Missing"}).source_id == ""
     assert MetronProvider("https://metron.example/api", "token")._normalize({"series": "Missing"}).source_id == ""

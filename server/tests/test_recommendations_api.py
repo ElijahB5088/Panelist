@@ -109,6 +109,52 @@ def test_recommendations_enrich_coverless_candidate(monkeypatch):
     assert main.conn.execute("SELECT image_url FROM media WHERE id = ?", (candidate_id,)).fetchone()[0] == item["image_url"]
 
 
+def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(monkeypatch):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    candidate_id = f"{user_id}-one-piece"
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, source, media_type, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (candidate_id, "One Piece", "Eiichiro Oda", "action,adventure", 5.0, "anilist", None, None),
+    )
+    main.conn.commit()
+
+    async def grouped_search(query, limit=10):
+        return [
+            MetadataGroup(
+                group_id="one-piece",
+                primary=MetadataResult(
+                    "comicvine",
+                    "comicvine-one-piece",
+                    "One Piece",
+                    "Eiichiro Oda",
+                    image_url="https://covers.example/one-piece.jpg",
+                    source_url="https://comicvine.example/one-piece",
+                ),
+                variants=[],
+            )
+        ]
+
+    async def no_featured(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
+    monkeypatch.setattr(main, "_featured", no_featured)
+
+    manga_response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 10})
+    comic_response = client.get("/api/recommendations", params={"media_type": "comic", "limit": 10})
+
+    assert manga_response.status_code == 200
+    assert candidate_id in [item["id"] for item in manga_response.json()]
+    assert comic_response.status_code == 200
+    assert candidate_id not in [item["id"] for item in comic_response.json()]
+    assert tuple(
+        main.conn.execute(
+            "SELECT source, media_type, image_url FROM media WHERE id = ?", (candidate_id,)
+        ).fetchone()
+    ) == ("anilist", None, None)
+
+
 @pytest.mark.parametrize(
     ("candidate_title", "candidate_creator", "candidate_type"),
     [
