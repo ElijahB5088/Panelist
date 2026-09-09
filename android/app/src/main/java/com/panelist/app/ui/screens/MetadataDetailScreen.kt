@@ -1,7 +1,9 @@
 package com.panelist.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.SubcomposeAsyncImage
@@ -70,7 +73,9 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
                     model = result.image_url,
                     contentDescription = "Cover for ${result.title}",
                     modifier = Modifier.fillMaxWidth().height(260.dp),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    loading = { MetadataCoverFallback(result) },
+                    error = { MetadataCoverFallback(result) }
                 )
                 Text(result.title, style = MaterialTheme.typography.headlineLarge)
                 Text("Showing ${result.source}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
@@ -94,6 +99,22 @@ fun MetadataDetailScreen(group: MetadataGroup, sessionStore: SessionStore? = nul
                 ) { Text(if (preferredSource == result.source) "Preferred copy" else "Use this copy by default") }
             }
         }
+    }
+}
+
+@Composable
+private fun MetadataCoverFallback(result: MetadataResult) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            result.title.take(1).uppercase(),
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            style = MaterialTheme.typography.displayLarge
+        )
     }
 }
 

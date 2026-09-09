@@ -133,6 +133,16 @@ fun HomeScreen(viewModel: HomeViewModel, onRecommendationClick: (Recommendation)
                 onClick = { viewModel.setMediaTypeFilter("manga") },
                 label = { Text("Manga") }
             )
+            FilterChip(
+                selected = state.mediaTypeFilter == "manhwa",
+                onClick = { viewModel.setMediaTypeFilter("manhwa") },
+                label = { Text("Manhwa") }
+            )
+            FilterChip(
+                selected = state.mediaTypeFilter == "manhua",
+                onClick = { viewModel.setMediaTypeFilter("manhua") },
+                label = { Text("Manhua") }
+            )
         }
         Spacer(Modifier.height(4.dp))
 
@@ -190,7 +200,7 @@ fun HomeScreen(viewModel: HomeViewModel, onRecommendationClick: (Recommendation)
                                 .matchParentSize()
                                 .background(
                                     MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                                    RoundedCornerShape(24.dp)
+                                    MaterialTheme.shapes.large
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -239,7 +249,7 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
             MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }
-    Surface(modifier = modifier.fillMaxWidth(), onClick = onClick, shape = RoundedCornerShape(24.dp), tonalElevation = 4.dp) {
+    Surface(modifier = modifier.fillMaxWidth(), onClick = onClick, shape = MaterialTheme.shapes.large, tonalElevation = 4.dp) {
         Column {
             Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(accent), contentAlignment = Alignment.Center) {
                 SubcomposeAsyncImage(
@@ -255,18 +265,6 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
                         )
                     }
                 )
-                Surface(
-                    modifier = Modifier.align(Alignment.BottomStart).padding(18.dp),
-                    color = Color.Black.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        "COVER PREVIEW",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
             }
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(pick.title, style = MaterialTheme.typography.headlineSmall)
@@ -293,7 +291,7 @@ private fun CoverFallback(pick: Recommendation, accent: Color, onAccent: Color) 
 
 @Composable
 private fun LoadingDeck() {
-    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
+    Surface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tonalElevation = 2.dp) {
         Column {
             Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(MaterialTheme.colorScheme.surfaceVariant))
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -308,7 +306,7 @@ private fun LoadingDeck() {
 
 @Composable
 private fun ErrorDeck(message: String, onRetry: () -> Unit) {
-    Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
+    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp) {
         Column(modifier = Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Recommendations are unavailable", style = MaterialTheme.typography.headlineSmall)
             Text(message, style = MaterialTheme.typography.bodyLarge)
@@ -329,7 +327,7 @@ private fun ActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 
 @Composable
 private fun EmptyDeck(onRefresh: () -> Unit) {
-    Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
+    Surface(shape = MaterialTheme.shapes.large, tonalElevation = 2.dp) {
         Column(modifier = Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("You reached the end.", style = MaterialTheme.typography.headlineSmall)
             Text("Rate a few more books or check back after your library syncs.", style = MaterialTheme.typography.bodyLarge)

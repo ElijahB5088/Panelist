@@ -111,7 +111,26 @@ def test_authoritative_manga_match_accepts_title_only_asian_origin():
     async def run():
         return await service.authoritative_manga_match("Japanese Title")
 
-    assert asyncio.run(run()).source_id == "jp-1"
+    result = asyncio.run(run())
+    assert result.source_id == "jp-1"
+    assert result.media_type == "manga"
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected_type"),
+    [("KR", "manhwa"), ("CN", "manhua")],
+)
+def test_authoritative_manga_match_preserves_asian_subtype(origin, expected_type):
+    provider = NamedProvider(
+        "anilist",
+        [MetadataResult("anilist", "1", "Common Title", country_of_origin=origin, media_type="manga")],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match("Common Title")
+
+    assert asyncio.run(run()).media_type == expected_type
 
 
 def test_authoritative_manga_match_rejects_title_only_western_origin():

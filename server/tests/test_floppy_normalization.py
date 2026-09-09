@@ -1,3 +1,8 @@
+import asyncio
+
+import httpx
+import pytest
+
 from app.providers.floppy import FloppyProvider
 
 
@@ -6,6 +11,36 @@ def test_floppy_api_paths():
 
     assert provider.connection_path == "/api/v1/user/preferences/"
     assert provider.library_path == "/api/v1/media/"
+
+
+def test_floppy_fetch_uses_bounded_timeout_without_retries(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers):
+            calls.append((url, self.timeout))
+            raise httpx.ReadTimeout("slow response")
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    with pytest.raises(httpx.ReadTimeout):
+        asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
+
+    assert len(calls) == 1
+    timeout = calls[0][1]
+    assert timeout.connect == 5.0
+    assert timeout.read == 20.0
+    assert timeout.write == 10.0
+    assert timeout.pool == 5.0
 
 
 def test_floppy_normalization():

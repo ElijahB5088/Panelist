@@ -98,10 +98,10 @@ fun PanelistTheme(
         typography = PanelistTypography,
         shapes = Shapes(
             extraSmall = RoundedCornerShape(8.dp),
-            small = RoundedCornerShape(12.dp),
-            medium = RoundedCornerShape(20.dp),
-            large = RoundedCornerShape(28.dp),
-            extraLarge = RoundedCornerShape(32.dp)
+            small = RoundedCornerShape(10.dp),
+            medium = RoundedCornerShape(16.dp),
+            large = RoundedCornerShape(22.dp),
+            extraLarge = RoundedCornerShape(28.dp)
         ),
         content = content
     )

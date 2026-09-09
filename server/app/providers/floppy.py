@@ -11,6 +11,7 @@ class FloppyProviderError(Exception):
 
 
 class FloppyProvider(TrackingProvider):
+    request_timeout = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
     connection_path = "/api/v1/user/preferences/"
     library_path = "/api/v1/media/"
     supported_media_types = {"comic", "comics", "manga"}
@@ -20,7 +21,7 @@ class FloppyProvider(TrackingProvider):
             "Authorization": "Bearer " + api_token,
             "X-API-Key": api_token,
         }
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=self.request_timeout) as client:
             resp = await client.get(f"{server_url.rstrip('/')}{self.connection_path}", headers=headers)
         resp.raise_for_status()
         return resp.is_success
@@ -30,7 +31,7 @@ class FloppyProvider(TrackingProvider):
             "Authorization": "Bearer " + api_token,
             "X-API-Key": api_token,
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=self.request_timeout) as client:
             resp = await client.get(f"{server_url.rstrip('/')}{self.library_path}", headers=headers)
         resp.raise_for_status()
         data = resp.json()

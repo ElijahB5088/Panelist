@@ -152,7 +152,7 @@ def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(mon
         main.conn.execute(
             "SELECT source, media_type, image_url FROM media WHERE id = ?", (candidate_id,)
         ).fetchone()
-    ) == ("anilist", "manga", None)
+    ) == ("anilist", "manga", "https://covers.example/one-piece.jpg")
 
 
 def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monkeypatch):
@@ -193,6 +193,43 @@ def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monk
             (candidate_id,),
         ).fetchone()
     ) == ("Yoshihiro Togashi", "manga", "anilist", "anilist-hxh")
+
+
+def test_recommendations_repair_comicvine_manhwa_before_filtering(monkeypatch):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    candidate_id = f"{user_id}-manhwa"
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, source, media_type, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (candidate_id, "Solo Leveling", "unknown", "action", 5.0, "comicvine", None, "https://covers.example/solo.jpg"),
+    )
+    main.conn.commit()
+
+    async def authoritative_manga_match(title, creator=None, release_date=None):
+        return MetadataResult(
+            "anilist",
+            "anilist-solo-leveling",
+            "Solo Leveling",
+            "Chugong",
+            release_date="2018-07-25",
+            media_type="manhwa",
+            country_of_origin="KR",
+        )
+
+    monkeypatch.setattr(main.metadata_service, "authoritative_manga_match", authoritative_manga_match)
+
+    response = client.get("/api/recommendations", params={"media_type": "manhwa", "limit": 100})
+
+    assert response.status_code == 200
+    item = next(item for item in response.json() if item["id"] == candidate_id)
+    assert item["media_type"] == "manhwa"
+    assert item["creator"] == "Chugong"
+    assert tuple(
+        main.conn.execute(
+            "SELECT creator, media_type, tracker_source, tracker_media_id FROM media WHERE id = ?",
+            (candidate_id,),
+        ).fetchone()
+    ) == ("Chugong", "manhwa", "anilist", "anilist-solo-leveling")
 
 
 @pytest.mark.parametrize(

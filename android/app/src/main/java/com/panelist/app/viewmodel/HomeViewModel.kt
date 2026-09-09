@@ -150,8 +150,8 @@ private fun normalizeMediaType(mediaType: String?, source: String? = null): Stri
 	if (normalizedSource in setOf("anilist", "kitsu", "mal")) return "manga"
 	val normalizedType = when (mediaType?.trim()?.lowercase()) {
 		"comic", "comics" -> "comic"
-		"manga", "manhwa", "manhua" -> "manga"
+		"manga", "manhwa", "manhua" -> mediaType.trim().lowercase()
 		else -> mediaType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 	}
-	return normalizedType ?: if (normalizedSource in setOf("comicvine", "metron", "openlibrary")) "comic" else null
+	return normalizedType
 }

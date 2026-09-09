@@ -124,7 +124,11 @@ class MetadataSearchService:
                 continue
             matches.append(candidate)
 
-        result = matches[0] if matches and _equivalent_authoritative_matches(matches) else None
+        result = None
+        if matches and _equivalent_authoritative_matches(matches):
+            match = matches[0]
+            media_type = _authoritative_media_type(match)
+            result = match if match.media_type == media_type else replace(match, media_type=media_type)
         self._authoritative_cache[key] = (now, result)
         self._authoritative_cache.move_to_end(key)
         while len(self._authoritative_cache) > self.cache_max_entries:
@@ -207,7 +211,7 @@ def _associate_authoritative_manga(results: list[MetadataResult]) -> list[Metada
                 result,
                 title=match.title,
                 creator=result.creator or match.creator,
-                media_type="manga",
+                media_type=_authoritative_media_type(match),
             )
         associated.append(result)
     return associated
@@ -236,6 +240,15 @@ def _metadata_titles(result: MetadataResult) -> set[str]:
         for value in [result.title, *(result.aliases or [])]
         if (normalized := normalize_identity(value))
     }
+
+
+def _authoritative_media_type(result: MetadataResult) -> str:
+    origin = (result.country_of_origin or "").upper()
+    if origin == "KR":
+        return "manhwa"
+    if origin == "CN":
+        return "manhua"
+    return "manga"
 
 
 def _equivalent_authoritative_matches(matches: list[MetadataResult]) -> bool:

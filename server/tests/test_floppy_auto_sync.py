@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import uuid
 
 from fastapi.testclient import TestClient
@@ -162,3 +163,50 @@ def test_floppy_sync_rejects_conflicting_source_without_writing_media(monkeypatc
         "SELECT media_id FROM media_sources WHERE source = 'floppy' AND source_id = 'shared-id'"
     ).fetchone()[0] == "existing-media"
     assert client.get("/api/sync/status").json()["sync_status"] == "error"
+
+
+def test_floppy_sync_rejects_overlapping_request(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+
+    async def already_running(user_id):
+        raise main.SyncInProgressError("A sync is already running for this account")
+
+    monkeypatch.setattr(main, "sync_user_library", already_running)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A sync is already running for this account"
+
+
+def test_failed_floppy_auto_sync_is_rescheduled(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+    client.post(
+        "/api/integrations/floppy/sync-settings",
+        json={"enabled": True, "interval_minutes": 30},
+    )
+
+    async def failed_fetch(server_url, api_token):
+        raise RuntimeError("temporary upstream failure")
+
+    monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", failed_fetch)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 502
+    status = client.get("/api/sync/status").json()
+    assert status["sync_status"] == "error"
+    next_sync_at = datetime.fromisoformat(
+        main.conn.execute(
+            "SELECT next_sync_at FROM tracker_integrations ORDER BY user_id DESC LIMIT 1"
+        ).fetchone()[0]
+    )
+    assert next_sync_at > datetime.now(timezone.utc)

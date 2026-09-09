@@ -7,7 +7,7 @@ Implemented endpoints:
 - `POST /api/auth/refresh`
 - `GET /api/me`
 - `GET /api/profile`
-- `GET /api/recommendations?limit=100&media_type=comic|manga`
+- `GET /api/recommendations?limit=100&media_type=comic|manga|manhwa|manhua`
 - `GET /api/recommendations/{id}`
 - `POST /api/recommendations/{id}/like`
 - `POST /api/recommendations/{id}/dismiss`
@@ -98,4 +98,6 @@ or show their error state.
 `source_url` when provenance is available. Users without personalized results
 receive source-backed featured picks with `why: "Featured pick"`.
 The optional `media_type` parameter filters recommendations before the limit is
-applied and accepts `comic` or `manga`.
+applied and accepts `comic`, `manga`, `manhwa`, or `manhua`. Records that
+cannot be classified confidently have no media type and are excluded from
+these category filters.

@@ -275,17 +275,23 @@ async def _recommendation_cover(row):
             break
     if not match:
         return row
+    current_type = _media_type(row[11], row[6], row[10], row[1])
+    preserve_source = row[6] in {"anilist", "kitsu", "mal"}
+    source = row[6] if preserve_source else match.source
+    source_id = row[7] if preserve_source else match.source_id
+    source_url = row[9] if preserve_source else match.source_url
+    media_type = row[11] or match.media_type or current_type
     conn.execute(
         """
         UPDATE media
         SET source=?, source_id=?, image_url=?, source_url=?, media_type=COALESCE(media_type, ?)
         WHERE id=?
         """,
-        (match.source, match.source_id, match.image_url, match.source_url, match.media_type, row[0]),
+        (source, source_id, match.image_url, source_url, media_type, row[0]),
     )
     _upsert_media_source(row[0], match.source, match.source_id, match.source_url)
     conn.commit()
-    return (*row[:6], match.source, match.source_id, match.image_url, match.source_url, row[10], row[11], row[12])
+    return (*row[:6], source, source_id, match.image_url, source_url, row[10], row[11] or media_type, row[12])
 
 
 async def _repair_external_manga_rows() -> None:
@@ -317,14 +323,14 @@ async def _repair_external_manga_rows() -> None:
         conn.execute(
             """
             UPDATE media
-            SET media_type='manga', tracker_source=?, tracker_media_id=?,
+            SET media_type=?, tracker_source=?, tracker_media_id=?,
                 creator=CASE
                     WHEN creator IS NULL OR lower(trim(creator)) IN ('comic', 'comics', 'manga', 'unknown', 'n/a', 'n a') THEN ?
                     ELSE creator
                 END
             WHERE id=?
             """,
-            (match.source, match.source_id, match.creator, row[0]),
+            (match.media_type or "manga", match.source, match.source_id, match.creator, row[0]),
         )
         _upsert_media_source(row[0], match.source, match.source_id)
         changed = True
@@ -406,12 +412,19 @@ def _request_security_details(request: Request) -> dict[str, object]:
 _sync_locks: dict[int, asyncio.Lock] = {}
 
 
+class SyncInProgressError(Exception):
+    pass
+
+
 def _sync_lock(user_id: int) -> asyncio.Lock:
     return _sync_locks.setdefault(user_id, asyncio.Lock())
 
 
 async def sync_user_library(user_id: int) -> None:
-    async with _sync_lock(user_id):
+    lock = _sync_lock(user_id)
+    if lock.locked():
+        raise SyncInProgressError("A sync is already running for this account")
+    async with lock:
         row = conn.execute(
             "SELECT provider, server_url, encrypted_token, auto_sync_enabled, auto_sync_interval_minutes FROM tracker_integrations WHERE user_id = ? AND connected = 1",
             (user_id,),
@@ -530,9 +543,14 @@ async def sync_user_library(user_id: int) -> None:
         except Exception as exc:
             conn.rollback()
             error_message = str(exc)[:240] or "Unknown sync error"
+            next_sync_at = (
+                (datetime.now(timezone.utc) + timedelta(minutes=row[4])).isoformat()
+                if row[3]
+                else None
+            )
             conn.execute(
-                "UPDATE tracker_integrations SET sync_status='error', sync_error=? WHERE user_id = ?",
-                (error_message, user_id),
+                "UPDATE tracker_integrations SET sync_status='error', sync_error=?, next_sync_at=? WHERE user_id = ?",
+                (error_message, next_sync_at, user_id),
             )
             conn.commit()
             raise
@@ -844,6 +862,8 @@ def disconnect_kitsu(user=Depends(user_from_auth)):
 async def sync(user=Depends(user_from_auth)):
     try:
         await sync_user_library(user["id"])
+    except SyncInProgressError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         _audit_event(user["id"], "sync.failed", outcome="rejected", details={"reason": str(exc)[:120]})
         raise HTTPException(400, str(exc)) from exc
@@ -1075,9 +1095,9 @@ async def recommendations(
     if limit < 1 or limit > 100:
         raise HTTPException(400, "limit must be between 1 and 100")
     normalized_media_type = _media_type(media_type) if media_type else None
-    if media_type and normalized_media_type not in {"comic", "manga"}:
-        raise HTTPException(400, "media_type must be comic or manga")
-    if normalized_media_type == "manga":
+    if media_type and normalized_media_type not in {"comic", "manga", "manhwa", "manhua"}:
+        raise HTTPException(400, "media_type must be comic, manga, manhwa, or manhua")
+    if normalized_media_type in {"comic", "manga", "manhwa", "manhua"}:
         await _repair_external_manga_rows()
     recs = build_recommendations(conn, user["id"], limit=limit, media_type=normalized_media_type)
     ids = [r.media_id for r in recs]

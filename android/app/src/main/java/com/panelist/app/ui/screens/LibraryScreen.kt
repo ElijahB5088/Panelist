@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import android.content.Intent
@@ -133,13 +134,17 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
                     }
                 }
             }
-            Row {
-                TextButton(onClick = { isGridView = false }) {
-                    Text("List", color = if (!isGridView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                TextButton(onClick = { isGridView = true }) {
-                    Text("Grid", color = if (isGridView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !isGridView,
+                    onClick = { isGridView = false },
+                    label = { Text("List") }
+                )
+                FilterChip(
+                    selected = isGridView,
+                    onClick = { isGridView = true },
+                    label = { Text("Grid") }
+                )
             }
         }
         when {
@@ -166,7 +171,7 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
 
 @Composable
 private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
-    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().clickable { onOpenItem(item) }) {
+    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenItem(item) }) {
         Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SubcomposeAsyncImage(
                 model = item.image_url,
@@ -191,7 +196,7 @@ private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
 private fun LibraryGridCard(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
     Surface(
         tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth().clickable { onOpenItem(item) }
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenItem(item) }
     ) {
         Column {
             Surface(
