@@ -152,7 +152,32 @@ def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(mon
         main.conn.execute(
             "SELECT source, media_type, image_url FROM media WHERE id = ?", (candidate_id,)
         ).fetchone()
-    ) == ("anilist", None, None)
+    ) == ("anilist", "manga", None)
+
+
+def test_recommendations_repair_curated_comicvine_manga_row():
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    candidate_id = f"{user_id}-hunter-x-hunter"
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, source, media_type, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (candidate_id, "Hunter x Hunter", "comic", "action", 5.0, "comicvine", "comic", "https://covers.example/hxh.jpg"),
+    )
+    main.conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (?, ?, ?, ?, ?)",
+        (user_id, candidate_id, "planned", 0, None),
+    )
+    main.conn.commit()
+
+    response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 100})
+
+    assert response.status_code == 200
+    item = next(item for item in response.json() if item["id"] == candidate_id)
+    assert item["media_type"] == "manga"
+    assert item["creator"] is None
+    assert tuple(
+        main.conn.execute("SELECT creator, media_type FROM media WHERE id = ?", (candidate_id,)).fetchone()
+    ) == (None, "manga")
 
 
 @pytest.mark.parametrize(

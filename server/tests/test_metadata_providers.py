@@ -57,6 +57,45 @@ def test_comicvine_volume_normalization():
     assert result.creator == "Brian K. Vaughan"
 
 
+def test_comicvine_normalization_accepts_nested_author_credit():
+    result = ComicVineProvider("key")._normalize(
+        {
+            "id": 456,
+            "name": "Paper Girls",
+            "authors": [{"author": {"name": "Brian K. Vaughan"}}],
+        }
+    )
+
+    assert result.creator == "Brian K. Vaughan"
+
+
+def test_comicvine_normalization_falls_back_when_person_credits_have_no_name():
+    result = ComicVineProvider("key")._normalize(
+        {
+            "id": 789,
+            "name": "Y: The Last Man",
+            "person_credits": [{"role": "artist"}],
+            "writers": [{"name": "Brian K. Vaughan"}],
+        }
+    )
+
+    assert result.creator == "Brian K. Vaughan"
+
+
+def test_comicvine_normalization_classifies_curated_manga_and_rejects_placeholder_creator():
+    result = ComicVineProvider("key")._normalize(
+        {
+            "id": 999,
+            "name": "Hunter x Hunter",
+            "start_year": 1998,
+            "person_credits": [{"name": "comic", "role": "writer"}],
+        }
+    )
+
+    assert result.media_type == "manga"
+    assert result.creator is None
+
+
 def test_openlibrary_normalization():
     result = OpenLibraryProvider()._normalize(
         {

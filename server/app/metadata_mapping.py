@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from .metadata import MetadataResult
 
 
+CURATED_MANGA_TITLES = {"hunter x hunter"}
+
+
 @dataclass(frozen=True)
 class MetadataIdentity:
     title: str
@@ -37,7 +40,7 @@ def map_metadata(result: MetadataResult) -> MetadataMatch:
         title=normalize_identity(result.title),
         creator=normalize_identity(result.creator),
         release_year=normalize_year(result.release_date),
-        media_type=normalize_media_type(result.media_type, source=result.source),
+        media_type=normalize_media_type(result.media_type, source=result.source, title=result.title),
     )
     confidence, reason = _match_quality(identity)
     return MetadataMatch(identity=identity, confidence=confidence, reason=reason)
@@ -63,7 +66,7 @@ def compare_metadata(
         return MetadataComparison(False, "creator_mismatch")
 
     expected_type = normalize_media_type(media_type, tracker_source=tracker_source)
-    candidate_type = normalize_media_type(result.media_type, source=result.source)
+    candidate_type = normalize_media_type(result.media_type, source=result.source, title=result.title)
     if expected_type and candidate_type and expected_type != candidate_type:
         return MetadataComparison(False, "media_type_mismatch")
 
@@ -88,8 +91,11 @@ def normalize_media_type(
     value: str | None,
     source: str | None = None,
     tracker_source: str | None = None,
+    title: str | None = None,
 ) -> str:
     if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
+        return "manga"
+    if source == "comicvine" and normalize_identity(title) in CURATED_MANGA_TITLES:
         return "manga"
     normalized = normalize_identity(value)
     if normalized in {"comic", "comics"}:

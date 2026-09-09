@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
 from .config import settings
-from .metadata_mapping import compare_metadata
+from .metadata_mapping import compare_metadata, normalize_identity
 from .metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary
 from .providers.metadata import AniListProvider, ComicVineProvider, GCDProvider, MetronProvider, OpenLibraryProvider
 from .providers.floppy import FloppyProvider, FloppyProviderError
@@ -264,7 +264,7 @@ async def _recommendation_cover(row):
                 candidate,
                 title=row[1],
                 creator=row[2],
-                media_type=_media_type(row[11], row[6], row[10]),
+                media_type=_media_type(row[11], row[6], row[10], row[1]),
                 tracker_source=row[10],
             )
             if comparison.accepted:
@@ -1003,7 +1003,11 @@ async def _featured(
                     continue
                 if excluded_titles and _normalize_title(item["primary"]["title"]) in excluded_titles:
                     continue
-                if media_type and _media_type(item["primary"].get("media_type"), item["primary"].get("source")) != media_type:
+                if media_type and _media_type(
+                    item["primary"].get("media_type"),
+                    item["primary"].get("source"),
+                    title=item["primary"].get("title"),
+                ) != media_type:
                     continue
                 results.append(item)
             if len(results) >= limit:
@@ -1076,7 +1080,16 @@ async def recommendations(
         if rec.media_id not in by_id:
             continue
         row = by_id[rec.media_id]
-        normalized_type = _media_type(row[11], row[6], row[10])
+        normalized_type = _media_type(row[11], row[6], row[10], row[1])
+        creator = row[2]
+        if row[6] == "comicvine" and normalize_identity(creator) in {"comic", "comics", "manga", "unknown", "n a"}:
+            creator = None
+        if normalized_type != row[11] or creator != row[2]:
+            conn.execute(
+                "UPDATE media SET media_type=?, creator=? WHERE id=?",
+                (normalized_type, creator, row[0]),
+            )
+            conn.commit()
         if normalized_media_type and normalized_type != normalized_media_type:
             continue
         response.append(
@@ -1085,7 +1098,7 @@ async def recommendations(
                 "score": rec.score,
                 "why": rec.reason,
                 "title": row[1],
-                "creator": row[2],
+                "creator": creator,
                 "genres": row[3].split(",") if row[3] else [],
                 "rating": row[4],
                 "description": row[5],

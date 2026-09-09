@@ -8,6 +8,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from ..metadata import MetadataResult
+from ..metadata_mapping import CURATED_MANGA_TITLES
 from .base import valid_external_id
 
 
@@ -69,30 +70,47 @@ class ComicVineProvider(MetadataProvider):
         publisher = row.get("publisher") or {}
         image = row.get("image") or {}
         year = row.get("start_year")
-        credits = row.get("person_credits") or row.get("credits") or []
+        credits = [
+            credit
+            for field in ("person_credits", "credits", "authors", "writers")
+            for credit in (row.get(field) or [])
+        ]
+
+        def credit_name(credit: object) -> str | None:
+            if isinstance(credit, str):
+                return credit.strip() or None
+            if not isinstance(credit, dict):
+                return None
+            for key in ("name", "person", "creator", "author", "writer"):
+                value = credit.get(key)
+                if isinstance(value, str) and value:
+                    return value.strip() or None
+                if isinstance(value, dict):
+                    name = value.get("name")
+                    if isinstance(name, str) and name:
+                        return name.strip() or None
+            return None
+
         creator = next(
             (
-                credit.get("name")
-                or (credit.get("person") or {}).get("name")
-                for credit in credits
-                if isinstance(credit, dict)
-                and (
-                    credit.get("name")
-                    or (credit.get("person") or {}).get("name")
-                )
+                name
+                for name in (credit_name(credit) for credit in credits)
+                if name and name.casefold() not in {"comic", "comics", "manga", "unknown", "n/a"}
             ),
             None,
         )
+        title = row.get("name") or "Untitled"
         return MetadataResult(
             source=self.name,
             source_id=valid_external_id(row.get("id")) or "",
-            title=row.get("name") or "Untitled",
+            title=title,
             creator=creator,
             publisher=publisher.get("name"),
             description=row.get("description") or row.get("deck"),
             release_date=f"{year}-01-01" if year else None,
             image_url=image.get("original_url") or image.get("super_url"),
             source_url=row.get("site_detail_url"),
+            media_type="manga" if title.casefold() in CURATED_MANGA_TITLES else None,
         )
 
 

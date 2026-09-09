@@ -5,9 +5,10 @@ import hashlib
 import logging
 import time
 from collections import OrderedDict, defaultdict, deque
+from dataclasses import replace
 
 from .metadata import MetadataGroup, MetadataResult
-from .metadata_mapping import map_metadata, normalize_identity
+from .metadata_mapping import map_metadata, normalize_identity, normalize_year
 from .providers.metadata import MetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def group_metadata(
     providers: list[MetadataProvider],
     preferred_source: str | None = None,
 ) -> list[MetadataGroup]:
+    results = _associate_authoritative_manga(results)
     provider_order = {provider.name: index for index, provider in enumerate(providers)}
     groups: dict[str, list[MetadataResult]] = {}
     order: list[str] = []
@@ -121,6 +123,47 @@ def group_metadata(
         group_id = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
         grouped.append(MetadataGroup(group_id=group_id, primary=primary, variants=variants))
     return grouped
+
+
+def _associate_authoritative_manga(results: list[MetadataResult]) -> list[MetadataResult]:
+    tracker_results = [
+        result
+        for result in results
+        if result.source in {"anilist", "kitsu", "mal"}
+    ]
+    if not tracker_results:
+        return results
+
+    associated = []
+    for result in results:
+        if result.source != "comicvine":
+            associated.append(result)
+            continue
+        title = normalize_identity(result.title)
+        creator = normalize_identity(result.creator)
+        year = normalize_year(result.release_date)
+        match = next(
+            (
+                tracker
+                for tracker in tracker_results
+                if normalize_identity(tracker.title) == title
+                and year
+                and normalize_year(tracker.release_date) == year
+                and (
+                    (creator and normalize_identity(tracker.creator) == creator)
+                    or not creator
+                )
+            ),
+            None,
+        )
+        if match:
+            result = replace(
+                result,
+                creator=result.creator or match.creator,
+                media_type="manga",
+            )
+        associated.append(result)
+    return associated
 
 
 def covered_primary(group: MetadataGroup) -> MetadataResult:

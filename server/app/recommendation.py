@@ -43,8 +43,13 @@ def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
     }
 
 
-def _media_type(value: str | None, source: str | None = None, tracker_source: str | None = None) -> str | None:
-    return normalize_media_type(value, source=source, tracker_source=tracker_source) or None
+def _media_type(
+    value: str | None,
+    source: str | None = None,
+    tracker_source: str | None = None,
+    title: str | None = None,
+) -> str | None:
+    return normalize_media_type(value, source=source, tracker_source=tracker_source, title=title) or None
 
 
 def build_recommendations(
@@ -177,7 +182,7 @@ def build_recommendations(
         tracker_source = optional_values.get("tracker_source")
         if mid in already or _normalize_title(title) in already_titles or mid in dismissed:
             continue
-        if media_type and _media_type(candidate_type, source, tracker_source) != media_type:
+        if media_type and _media_type(candidate_type, source, tracker_source, title) != media_type:
             continue
         normalized_creator = _normalize(creator)
         candidate_genres = _split_csv(genres)

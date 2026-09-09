@@ -33,6 +33,7 @@ def test_mapping_does_not_invent_missing_identity_fields():
 def test_mapping_normalizes_media_type_aliases():
     assert normalize_media_type("manhwa") == "manga"
     assert normalize_media_type("comics") == "comic"
+    assert normalize_media_type(None, source="comicvine", title="Hunter x Hunter") == "manga"
 
 
 @pytest.mark.parametrize(
