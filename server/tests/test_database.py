@@ -15,11 +15,15 @@ def test_fresh_database_applies_all_migrations_with_sqlite_hardening(tmp_path):
         audit_table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_events'"
         ).fetchone()[0]
+        catalog_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='catalog_entities'"
+        ).fetchone()[0]
 
-        assert latest == 8
+        assert latest == 9
         assert foreign_keys == 1
         assert journal_mode.lower() == "wal"
         assert audit_table == "audit_events"
+        assert catalog_table == "catalog_entities"
     finally:
         connection.close()
         settings.database_url = previous_url
