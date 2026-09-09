@@ -205,7 +205,7 @@ def _metadata_response(result):
         "release_date": result.release_date,
         "image_url": result.image_url,
         "source_url": result.source_url,
-        "media_type": result.media_type,
+        "media_type": _media_type(result.media_type, result.source),
     }
 
 
