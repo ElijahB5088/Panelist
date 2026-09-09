@@ -154,3 +154,44 @@ def test_recommendations_can_filter_candidates_by_media_type():
     recs = build_recommendations(conn, 1, 10, media_type="manga")
 
     assert [recommendation.media_id for recommendation in recs] == ["b"]
+
+
+def test_missing_creator_metadata_does_not_create_a_creator_match():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('missing-creator', 'Missing Creator', NULL, NULL, 0)"
+    )
+    conn.commit()
+
+    assert "missing-creator" not in [recommendation.media_id for recommendation in build_recommendations(conn, 1, 10)]
+
+
+def test_reason_names_the_library_item_that_provided_the_creator_signal():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('planned', 'Planned Other', 'Other', NULL, 0)"
+    )
+    conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'planned', 'plan-to-read', 0, NULL)"
+    )
+    conn.commit()
+
+    recommendation = next(item for item in build_recommendations(conn, 1, 10) if item.media_id == "c")
+
+    assert "Planned Other" in recommendation.reason
+
+
+def test_equal_scores_are_ordered_deterministically():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('tie-b', 'Tie B', 'No Match', 'science-fiction', 0)"
+    )
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('tie-a', 'Tie A', 'No Match', 'science-fiction', 0)"
+    )
+    conn.commit()
+
+    assert [item.media_id for item in build_recommendations(conn, 1, 10) if item.media_id.startswith("tie-")] == [
+        "tie-a",
+        "tie-b",
+    ]

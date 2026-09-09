@@ -1071,26 +1071,33 @@ async def recommendations(
     for original_row, enriched_row in zip(rows_to_enrich, enriched_rows):
         if not isinstance(enriched_row, Exception):
             by_id[original_row[0]] = enriched_row
-    return [
-        {
-            "id": rec.media_id,
-            "score": rec.score,
-            "why": rec.reason,
-            "title": by_id[rec.media_id][1],
-            "creator": by_id[rec.media_id][2],
-            "genres": by_id[rec.media_id][3].split(",") if by_id[rec.media_id][3] else [],
-            "rating": by_id[rec.media_id][4],
-            "description": by_id[rec.media_id][5],
-            "source": by_id[rec.media_id][6],
-            "source_id": by_id[rec.media_id][7],
-            "image_url": by_id[rec.media_id][8],
-            "source_url": by_id[rec.media_id][9],
-            "media_type": _media_type(by_id[rec.media_id][11], by_id[rec.media_id][6], by_id[rec.media_id][10]),
-            "release_date": by_id[rec.media_id][12],
-        }
-        for rec in recs
-        if rec.media_id in by_id
-    ]
+    response = []
+    for rec in recs:
+        if rec.media_id not in by_id:
+            continue
+        row = by_id[rec.media_id]
+        normalized_type = _media_type(row[11], row[6], row[10])
+        if normalized_media_type and normalized_type != normalized_media_type:
+            continue
+        response.append(
+            {
+                "id": rec.media_id,
+                "score": rec.score,
+                "why": rec.reason,
+                "title": row[1],
+                "creator": row[2],
+                "genres": row[3].split(",") if row[3] else [],
+                "rating": row[4],
+                "description": row[5],
+                "source": row[6],
+                "source_id": row[7],
+                "image_url": row[8],
+                "source_url": row[9],
+                "media_type": normalized_type,
+                "release_date": row[12],
+            }
+        )
+    return response
 
 
 @app.get("/api/recommendations/{media_id}")

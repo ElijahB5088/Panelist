@@ -56,7 +56,7 @@ def test_recommendations_exclude_read_items_and_enrich_covers(monkeypatch):
 
     monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
 
-    response = client.get("/api/recommendations", params={"limit": 10})
+    response = client.get("/api/recommendations", params={"limit": 100})
 
     assert response.status_code == 200
     recommendations = response.json()
@@ -100,7 +100,7 @@ def test_recommendations_enrich_coverless_candidate(monkeypatch):
 
     monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
 
-    response = client.get("/api/recommendations", params={"limit": 10})
+    response = client.get("/api/recommendations", params={"limit": 100})
 
     assert response.status_code == 200
     item = next(item for item in response.json() if item["id"] == candidate_id)
@@ -197,7 +197,7 @@ def test_recommendations_reject_unverified_cover_matches(
 
     monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
 
-    response = client.get("/api/recommendations", params={"limit": 10})
+    response = client.get("/api/recommendations", params={"limit": 100})
 
     assert response.status_code == 200
     item = next(item for item in response.json() if item["id"] == candidate_id)
@@ -235,7 +235,7 @@ def test_recommendations_keep_coverless_candidate_when_enrichment_times_out(monk
 
     monkeypatch.setattr(main.metadata_service, "grouped_search", grouped_search)
 
-    response = client.get("/api/recommendations", params={"limit": 10})
+    response = client.get("/api/recommendations", params={"limit": 100})
 
     assert response.status_code == 200
     item = next(item for item in response.json() if item["id"] == candidate_id)

@@ -70,19 +70,31 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 
 	fun setMediaTypeFilter(mediaType: String?) {
 		val normalizedMediaType = mediaType?.let(::normalizeMediaType)
-		_uiState.value = _uiState.value.copy(mediaTypeFilter = normalizedMediaType, currentIndex = 0)
+		_uiState.value = _uiState.value.copy(
+			mediaTypeFilter = normalizedMediaType,
+			currentIndex = 0,
+			recommendations = if (normalizedMediaType == null) _uiState.value.recommendations else emptyList(),
+			isLoading = normalizedMediaType != null,
+			errorMessage = null
+		)
 		if (normalizedMediaType == null) return
 
 		viewModelScope.launch {
 			runCatching { repository.recommendedForYou(normalizedMediaType) }
 				.onSuccess { additionalRecommendations ->
 					if (_uiState.value.mediaTypeFilter == normalizedMediaType) {
-						_uiState.value = _uiState.value.copy(recommendations = additionalRecommendations)
+						_uiState.value = _uiState.value.copy(
+							recommendations = additionalRecommendations,
+							isLoading = false
+						)
 					}
 				}
 				.onFailure { error ->
 					if (_uiState.value.mediaTypeFilter == normalizedMediaType) {
-						_uiState.value = _uiState.value.copy(errorMessage = error.message ?: "Recommendations are unavailable right now.")
+						_uiState.value = _uiState.value.copy(
+							isLoading = false,
+							errorMessage = error.message ?: "Recommendations are unavailable right now."
+						)
 					}
 				}
 		}

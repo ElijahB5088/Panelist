@@ -17,6 +17,12 @@ def _normalize(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
+def _add_affinity(target: dict[str, float], key: str, weight: float) -> None:
+    if not key:
+        return
+    target[key] = min(target.get(key, 0.0) + weight, 6.0)
+
+
 def _normalize_title(value: str | None) -> str:
     return normalize_identity(value)
 
@@ -83,7 +89,8 @@ def build_recommendations(
     positive_creators: dict[str, float] = {}
     avoid_genres: dict[str, float] = {}
     avoid_creators: dict[str, float] = {}
-    anchor_title = library[0][0] if library else "your favorites"
+    positive_genre_sources: dict[str, tuple[float, str, str]] = {}
+    positive_creator_sources: dict[str, tuple[float, str, str]] = {}
 
     for title, creator, genres, status, progress, user_rating in library:
         rating = float(user_rating) if user_rating is not None else None
@@ -110,9 +117,33 @@ def build_recommendations(
             continue
 
         creator_key = _normalize(creator)
-        target_creators[creator_key] = target_creators.get(creator_key, 0.0) + abs(weight)
+        _add_affinity(target_creators, creator_key, abs(weight))
+        if weight > 0 and creator_key:
+            source = positive_creator_sources.get(creator_key)
+            if source is None or weight > source[0]:
+                if user_rating is not None:
+                    evidence = "you liked"
+                elif status == "completed":
+                    evidence = "you finished"
+                elif status == "plan-to-read":
+                    evidence = "you planned"
+                else:
+                    evidence = "you are reading"
+                positive_creator_sources[creator_key] = (weight, title or "a favorite", evidence)
         for g in _split_csv(genres):
-            target_genres[g] = target_genres.get(g, 0.0) + abs(weight)
+            _add_affinity(target_genres, g, abs(weight))
+            if weight > 0:
+                source = positive_genre_sources.get(g)
+                if source is None or weight > source[0]:
+                    if user_rating is not None:
+                        evidence = "you liked"
+                    elif status == "completed":
+                        evidence = "you finished"
+                    elif status == "plan-to-read":
+                        evidence = "you planned"
+                    else:
+                        evidence = "you are reading"
+                    positive_genre_sources[g] = (weight, title or "a favorite", evidence)
 
     liked_feedback = conn.execute(
         """
@@ -124,9 +155,14 @@ def build_recommendations(
         (user_id,),
     ).fetchall()
     for creator, genres in liked_feedback:
-        positive_creators[_normalize(creator)] = positive_creators.get(_normalize(creator), 0.0) + 2.0
+        creator_key = _normalize(creator)
+        _add_affinity(positive_creators, creator_key, 2.0)
+        if creator_key and creator_key not in positive_creator_sources:
+            positive_creator_sources[creator_key] = (2.0, "a recommendation you liked", "you liked")
         for genre in _split_csv(genres):
-            positive_genres[genre] = positive_genres.get(genre, 0.0) + 2.0
+            _add_affinity(positive_genres, genre, 2.0)
+            if genre not in positive_genre_sources:
+                positive_genre_sources[genre] = (2.0, "a recommendation you liked", "you liked")
 
     media_columns = {row[1] for row in conn.execute("PRAGMA table_info(media)").fetchall()}
     optional_columns = [column for column in ("media_type", "source", "tracker_source") if column in media_columns]
@@ -144,22 +180,25 @@ def build_recommendations(
         if media_type and _media_type(candidate_type, source, tracker_source) != media_type:
             continue
         normalized_creator = _normalize(creator)
-        genre_score = sum(positive_genres.get(g, 0.0) for g in _split_csv(genres))
-        avoid_genre_score = sum(avoid_genres.get(g, 0.0) for g in _split_csv(genres))
-        creator_score = positive_creators.get(normalized_creator, 0.0) * 1.5
-        avoid_creator_score = avoid_creators.get(normalized_creator, 0.0) * 1.5
+        candidate_genres = _split_csv(genres)
+        genre_score = min(sum(positive_genres.get(g, 0.0) for g in candidate_genres), 6.0)
+        avoid_genre_score = min(sum(avoid_genres.get(g, 0.0) for g in candidate_genres), 6.0)
+        creator_score = positive_creators.get(normalized_creator, 0.0) * 1.5 if normalized_creator else 0.0
+        avoid_creator_score = avoid_creators.get(normalized_creator, 0.0) * 1.5 if normalized_creator else 0.0
         community = float(rating or 0.0)
         score = genre_score + creator_score - avoid_genre_score - avoid_creator_score + (0.35 * math.sqrt(max(community, 0.0)))
         if score <= 0:
             continue
-        overlap = sum(1 for g in _split_csv(genres) if g in positive_genres)
+        matching_genres = [g for g in candidate_genres if g in positive_genres]
         if creator_score > 0:
-            reason = f"Because you liked {anchor_title} and often read work by {creator}."
-        elif overlap:
-            reason = f"Matches your taste: shares {overlap} genres with titles you've rated highly."
+            _, source_title, evidence = positive_creator_sources[normalized_creator]
+            reason = f"Because {evidence} {source_title} and often read work by {creator}."
+        elif matching_genres:
+            _, source_title, evidence = positive_genre_sources[matching_genres[0]]
+            reason = f"Because {evidence} {source_title}, which matched your interest in {matching_genres[0]}."
         else:
-            reason = f"Because you liked {anchor_title}."
-        scored.append(RecommendationResult(media_id=mid, score=score, reason=reason))
+            reason = "Because it is highly rated by the community."
+        scored.append((RecommendationResult(media_id=mid, score=score, reason=reason), _normalize_title(title), str(mid)))
 
-    scored.sort(key=lambda item: item.score, reverse=True)
-    return scored[:limit]
+    scored.sort(key=lambda item: (-item[0].score, item[1], item[2]))
+    return [item[0] for item in scored[:limit]]
