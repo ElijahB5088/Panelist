@@ -17,6 +17,7 @@ class MetadataResult:
     image_url: str | None = None
     source_url: str | None = None
     media_type: str | None = None
+    aliases: list[str] | None = None
 
 
 @dataclass

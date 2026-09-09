@@ -35,6 +35,7 @@ class MetadataSearchService:
         self.client_window_seconds = client_window_seconds
         self.client_max_requests = client_max_requests
         self._cache: OrderedDict[tuple[str, int], tuple[float, list[MetadataResult]]] = OrderedDict()
+        self._authoritative_cache: OrderedDict[tuple[str, str, str], tuple[float, MetadataResult | None]] = OrderedDict()
         self._last_upstream_request: dict[str, float] = {}
         self._upstream_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._client_requests: defaultdict[str, deque[float]] = defaultdict(deque)
@@ -81,6 +82,54 @@ class MetadataSearchService:
     ) -> list[MetadataGroup]:
         results = await self.search(query, limit=limit)
         return group_metadata(results, self.providers, preferred_source=preferred_source)
+
+    async def authoritative_manga_match(
+        self,
+        title: str,
+        creator: str | None = None,
+        release_date: str | None = None,
+    ) -> MetadataResult | None:
+        key = (normalize_identity(title), normalize_identity(creator), normalize_year(release_date))
+        now = time.monotonic()
+        cached = self._authoritative_cache.get(key)
+        if cached and now - cached[0] < self.cache_ttl_seconds:
+            self._authoritative_cache.move_to_end(key)
+            return cached[1]
+        if cached:
+            del self._authoritative_cache[key]
+
+        providers = [provider for provider in self.providers if provider.name in {"anilist", "kitsu", "mal"}]
+        candidates: list[MetadataResult] = []
+        for provider in providers:
+            try:
+                await self._wait_for_upstream(provider.name)
+                candidates.extend(await provider.search(title, limit=10))
+            except Exception:
+                logger.warning("Authoritative metadata provider %s failed for %r", provider.name, title, exc_info=True)
+
+        normalized_title = normalize_identity(title)
+        normalized_creator = normalize_identity(creator)
+        source_year = normalize_year(release_date)
+        matches = []
+        for candidate in candidates:
+            if normalized_title not in _metadata_titles(candidate):
+                continue
+            candidate_creator = normalize_identity(candidate.creator)
+            candidate_year = normalize_year(candidate.release_date)
+            if normalized_creator and candidate_creator and normalized_creator != candidate_creator:
+                continue
+            if source_year and candidate_year and abs(int(source_year) - int(candidate_year)) > 1:
+                continue
+            if not normalized_creator and not source_year:
+                continue
+            matches.append(candidate)
+
+        result = matches[0] if matches and _equivalent_authoritative_matches(matches) else None
+        self._authoritative_cache[key] = (now, result)
+        self._authoritative_cache.move_to_end(key)
+        while len(self._authoritative_cache) > self.cache_max_entries:
+            self._authoritative_cache.popitem(last=False)
+        return result
 
     async def _wait_for_upstream(self, provider_name: str) -> None:
         async with self._upstream_locks[provider_name]:
@@ -136,29 +185,25 @@ def _associate_authoritative_manga(results: list[MetadataResult]) -> list[Metada
 
     associated = []
     for result in results:
-        if result.source != "comicvine":
+        if result.source not in {"comicvine", "gcd", "metron", "openlibrary"}:
             associated.append(result)
             continue
         title = normalize_identity(result.title)
         creator = normalize_identity(result.creator)
         year = normalize_year(result.release_date)
-        match = next(
-            (
-                tracker
-                for tracker in tracker_results
-                if normalize_identity(tracker.title) == title
-                and year
-                and normalize_year(tracker.release_date) == year
-                and (
-                    (creator and normalize_identity(tracker.creator) == creator)
-                    or not creator
-                )
-            ),
-            None,
-        )
+        matches = [
+            tracker
+            for tracker in tracker_results
+            if _metadata_titles(tracker).intersection(_metadata_titles(result))
+            and year
+            and normalize_year(tracker.release_date) == year
+            and (creator and normalize_identity(tracker.creator) == creator or not creator)
+        ]
+        match = matches[0] if len(matches) == 1 else None
         if match:
             result = replace(
                 result,
+                title=match.title,
                 creator=result.creator or match.creator,
                 media_type="manga",
             )
@@ -181,3 +226,24 @@ def _metadata_group_key(result: MetadataResult) -> str:
 
 def _normalize_identity(value: str) -> str:
     return normalize_identity(value)
+
+
+def _metadata_titles(result: MetadataResult) -> set[str]:
+    return {
+        normalized
+        for value in [result.title, *(result.aliases or [])]
+        if (normalized := normalize_identity(value))
+    }
+
+
+def _equivalent_authoritative_matches(matches: list[MetadataResult]) -> bool:
+    first = matches[0]
+    creator = normalize_identity(first.creator)
+    year = normalize_year(first.release_date)
+    for candidate in matches[1:]:
+        if normalize_identity(candidate.creator) != creator:
+            return False
+        candidate_year = normalize_year(candidate.release_date)
+        if year and candidate_year and abs(int(year) - int(candidate_year)) > 1:
+            return False
+    return True

@@ -63,6 +63,102 @@ def test_metadata_client_limit_raises_after_window_is_full():
         service.check_client_limit("client")
 
 
+def test_authoritative_manga_match_requires_unambiguous_identity():
+    provider = NamedProvider(
+        "anilist",
+        [MetadataResult("anilist", "hxh", "Hunter x Hunter", "Yoshihiro Togashi", release_date="1998-03-16", media_type="manga")],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match(
+            "Hunter x Hunter",
+            release_date="1998-01-01",
+        )
+
+    result = asyncio.run(run())
+    assert result is provider.results[0]
+
+
+def test_authoritative_manga_match_rejects_title_only_identity():
+    provider = NamedProvider(
+        "anilist",
+        [MetadataResult("anilist", "unknown", "Common Title", media_type="manga")],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match("Common Title")
+
+    assert asyncio.run(run()) is None
+
+
+def test_authoritative_manga_match_rejects_ambiguous_or_conflicting_results():
+    provider = NamedProvider(
+        "anilist",
+        [
+            MetadataResult("anilist", "one", "One Piece", "Eiichiro Oda", release_date="1997-07-22", media_type="manga"),
+            MetadataResult("anilist", "two", "One Piece", "Different Creator", release_date="1997-07-22", media_type="manga"),
+        ],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match("One Piece", release_date="1997-01-01")
+
+    assert asyncio.run(run()) is None
+
+
+def test_authoritative_manga_match_accepts_anilist_title_alias():
+    provider = NamedProvider(
+        "anilist",
+        [
+            MetadataResult(
+                "anilist",
+                "790",
+                "Attack on Titan",
+                "Hajime Isayama",
+                release_date="2009-04-01",
+                aliases=["Shingeki no Kyojin", "進撃の巨人"],
+            )
+        ],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match(
+            "進撃の巨人",
+            creator="Hajime Isayama",
+            release_date="2009-01-01",
+        )
+
+    assert asyncio.run(run()).source_id == "790"
+
+
+def test_authoritative_manga_match_accepts_equivalent_provider_results():
+    providers = [
+        NamedProvider(
+            "anilist",
+            [MetadataResult("anilist", "790", "Attack on Titan", "Hajime Isayama", release_date="2009-04-01")],
+        ),
+        NamedProvider(
+            "kitsu",
+            [MetadataResult("kitsu", "k-790", "Shingeki no Kyojin", "Hajime Isayama", release_date="2009-04-01")],
+        ),
+    ]
+    providers[1].results[0].aliases = ["Attack on Titan"]
+    service = MetadataSearchService(providers, upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match(
+            "Attack on Titan",
+            creator="Hajime Isayama",
+            release_date="2009-01-01",
+        )
+
+    assert asyncio.run(run()).source_id == "790"
+
+
 def test_group_metadata_collapses_equivalent_provider_results_and_keeps_variants():
     results = [
         MetadataResult("comicvine", "1", "Saga", "Brian K. Vaughan", release_date="2012-03-14"),

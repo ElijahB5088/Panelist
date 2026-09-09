@@ -7,9 +7,6 @@ from dataclasses import dataclass
 from .metadata import MetadataResult
 
 
-CURATED_MANGA_TITLES = {"hunter x hunter"}
-
-
 @dataclass(frozen=True)
 class MetadataIdentity:
     title: str
@@ -54,10 +51,14 @@ def compare_metadata(
     tracker_source: str | None = None,
 ) -> MetadataComparison:
     expected_title = normalize_identity(title)
-    candidate_title = normalize_identity(result.title)
-    if not expected_title or not candidate_title:
+    candidate_titles = {
+        normalize_identity(value)
+        for value in [result.title, *(result.aliases or [])]
+        if normalize_identity(value)
+    }
+    if not expected_title or not candidate_titles:
         return MetadataComparison(False, "missing_title")
-    if expected_title != candidate_title:
+    if expected_title not in candidate_titles:
         return MetadataComparison(False, "title_mismatch")
 
     expected_creator = normalize_identity(creator)
@@ -94,8 +95,6 @@ def normalize_media_type(
     title: str | None = None,
 ) -> str:
     if source in {"anilist", "kitsu", "mal"} or tracker_source in {"kitsu", "mal"}:
-        return "manga"
-    if source == "comicvine" and normalize_identity(title) in CURATED_MANGA_TITLES:
         return "manga"
     normalized = normalize_identity(value)
     if normalized in {"comic", "comics"}:

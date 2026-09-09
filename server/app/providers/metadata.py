@@ -8,7 +8,6 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from ..metadata import MetadataResult
-from ..metadata_mapping import CURATED_MANGA_TITLES
 from .base import valid_external_id
 
 
@@ -99,18 +98,16 @@ class ComicVineProvider(MetadataProvider):
             ),
             None,
         )
-        title = row.get("name") or "Untitled"
         return MetadataResult(
             source=self.name,
             source_id=valid_external_id(row.get("id")) or "",
-            title=title,
+            title=row.get("name") or "Untitled",
             creator=creator,
             publisher=publisher.get("name"),
             description=row.get("description") or row.get("deck"),
             release_date=f"{year}-01-01" if year else None,
             image_url=image.get("original_url") or image.get("super_url"),
             source_url=row.get("site_detail_url"),
-            media_type="manga" if title.casefold() in CURATED_MANGA_TITLES else None,
         )
 
 
@@ -323,7 +320,7 @@ class AniListProvider(MetadataProvider):
     query ($search: String!, $perPage: Int!) {
       Page(perPage: $perPage) {
         media(search: $search, type: MANGA) {
-          id title { romaji english native } description averageScore startDate { year month day }
+          id title { romaji english native } synonyms description averageScore startDate { year month day }
           coverImage { large } genres siteUrl
           staff(perPage: 3) { edges { node { name { full } } } }
         }
@@ -347,13 +344,26 @@ class AniListProvider(MetadataProvider):
 
     def _normalize(self, row: dict) -> MetadataResult:
         title = row.get("title") or {}
+        display_title = title.get("english") or title.get("romaji") or title.get("native") or "Untitled"
+        aliases = list(
+            dict.fromkeys(
+                value
+                for value in [
+                    title.get("romaji"),
+                    title.get("english"),
+                    title.get("native"),
+                    *(row.get("synonyms") or []),
+                ]
+                if value and value != display_title
+            )
+        )
         start_date = row.get("startDate") or {}
         date_parts = [str(start_date[key]) for key in ("year", "month", "day") if start_date.get(key)]
         staff = row.get("staff", {}).get("edges", [])
         return MetadataResult(
             source=self.name,
             source_id=valid_external_id(row.get("id")) or "",
-            title=title.get("english") or title.get("romaji") or title.get("native") or "Untitled",
+            title=display_title,
             creator=(staff[0].get("node", {}).get("name", {}).get("full") if staff else None),
             genres=row.get("genres") or [],
             description=row.get("description"),
@@ -361,4 +371,5 @@ class AniListProvider(MetadataProvider):
             release_date="-".join(date_parts) if date_parts else None,
             image_url=(row.get("coverImage") or {}).get("large"),
             source_url=row.get("siteUrl"),
+            aliases=aliases,
         )

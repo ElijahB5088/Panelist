@@ -287,6 +287,50 @@ async def _recommendation_cover(row):
     return (*row[:6], match.source, match.source_id, match.image_url, match.source_url, row[10], row[11], row[12])
 
 
+async def _repair_external_manga_rows() -> None:
+    rows = conn.execute(
+        """
+        SELECT id, title, creator, release_date
+        FROM media
+                WHERE source IN ('comicvine', 'gcd', 'metron', 'openlibrary')
+                    AND (media_type IS NULL OR media_type = 'comic')
+        """
+    ).fetchall()
+    if not rows:
+        return
+    matches = await asyncio.gather(
+        *(
+            metadata_service.authoritative_manga_match(
+                row[1],
+                row[2] if normalize_identity(row[2]) not in {"comic", "comics", "manga", "unknown", "n a"} else None,
+                row[3],
+            )
+            for row in rows
+        ),
+        return_exceptions=True,
+    )
+    changed = False
+    for row, match in zip(rows, matches):
+        if isinstance(match, Exception) or match is None:
+            continue
+        conn.execute(
+            """
+            UPDATE media
+            SET media_type='manga', tracker_source=?, tracker_media_id=?,
+                creator=CASE
+                    WHEN creator IS NULL OR lower(trim(creator)) IN ('comic', 'comics', 'manga', 'unknown', 'n/a', 'n a') THEN ?
+                    ELSE creator
+                END
+            WHERE id=?
+            """,
+            (match.source, match.source_id, match.creator, row[0]),
+        )
+        _upsert_media_source(row[0], match.source, match.source_id)
+        changed = True
+    if changed:
+        conn.commit()
+
+
 class Credentials(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=6)
@@ -1032,6 +1076,8 @@ async def recommendations(
     normalized_media_type = _media_type(media_type) if media_type else None
     if media_type and normalized_media_type not in {"comic", "manga"}:
         raise HTTPException(400, "media_type must be comic or manga")
+    if normalized_media_type == "manga":
+        await _repair_external_manga_rows()
     recs = build_recommendations(conn, user["id"], limit=limit, media_type=normalized_media_type)
     ids = [r.media_id for r in recs]
     if not ids:

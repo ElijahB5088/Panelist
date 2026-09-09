@@ -82,7 +82,7 @@ def test_comicvine_normalization_falls_back_when_person_credits_have_no_name():
     assert result.creator == "Brian K. Vaughan"
 
 
-def test_comicvine_normalization_classifies_curated_manga_and_rejects_placeholder_creator():
+def test_comicvine_normalization_leaves_media_type_unresolved_and_rejects_placeholder_creator():
     result = ComicVineProvider("key")._normalize(
         {
             "id": 999,
@@ -92,7 +92,7 @@ def test_comicvine_normalization_classifies_curated_manga_and_rejects_placeholde
         }
     )
 
-    assert result.media_type == "manga"
+    assert result.media_type is None
     assert result.creator is None
 
 
@@ -133,6 +133,23 @@ def test_anilist_normalization():
     assert result.creator == "A. Mangaka"
     assert result.rating == 8.4
     assert result.release_date == "2021-4-2"
+
+
+def test_anilist_normalization_preserves_all_title_aliases():
+    result = AniListProvider()._normalize(
+        {
+            "id": 790,
+            "title": {
+                "romaji": "Shingeki no Kyojin",
+                "english": "Attack on Titan",
+                "native": "進撃の巨人",
+            },
+            "synonyms": ["AOT", "Attack on Titan"],
+        }
+    )
+
+    assert result.title == "Attack on Titan"
+    assert result.aliases == ["Shingeki no Kyojin", "進撃の巨人", "AOT"]
 
 
 def test_metron_series_normalization():

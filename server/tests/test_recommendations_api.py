@@ -155,7 +155,7 @@ def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(mon
     ) == ("anilist", "manga", None)
 
 
-def test_recommendations_repair_curated_comicvine_manga_row():
+def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monkeypatch):
     client = authenticated_client()
     user_id = client.get("/api/me").json()["id"]
     candidate_id = f"{user_id}-hunter-x-hunter"
@@ -169,15 +169,30 @@ def test_recommendations_repair_curated_comicvine_manga_row():
     )
     main.conn.commit()
 
+    async def authoritative_manga_match(title, creator=None, release_date=None):
+        return MetadataResult(
+            "anilist",
+            "anilist-hxh",
+            "Hunter x Hunter",
+            "Yoshihiro Togashi",
+            release_date="1998-03-16",
+            media_type="manga",
+        )
+
+    monkeypatch.setattr(main.metadata_service, "authoritative_manga_match", authoritative_manga_match)
+
     response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 100})
 
     assert response.status_code == 200
     item = next(item for item in response.json() if item["id"] == candidate_id)
     assert item["media_type"] == "manga"
-    assert item["creator"] is None
+    assert item["creator"] == "Yoshihiro Togashi"
     assert tuple(
-        main.conn.execute("SELECT creator, media_type FROM media WHERE id = ?", (candidate_id,)).fetchone()
-    ) == (None, "manga")
+        main.conn.execute(
+            "SELECT creator, media_type, tracker_source, tracker_media_id FROM media WHERE id = ?",
+            (candidate_id,),
+        ).fetchone()
+    ) == ("Yoshihiro Togashi", "manga", "anilist", "anilist-hxh")
 
 
 @pytest.mark.parametrize(

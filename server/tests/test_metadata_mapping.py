@@ -33,7 +33,7 @@ def test_mapping_does_not_invent_missing_identity_fields():
 def test_mapping_normalizes_media_type_aliases():
     assert normalize_media_type("manhwa") == "manga"
     assert normalize_media_type("comics") == "comic"
-    assert normalize_media_type(None, source="comicvine", title="Hunter x Hunter") == "manga"
+    assert normalize_media_type(None, source="comicvine", title="Hunter x Hunter") == "comic"
 
 
 @pytest.mark.parametrize(
@@ -76,6 +76,23 @@ def test_comparison_uses_provider_type_fallback_when_explicit_type_is_missing():
         title="Saga",
         creator="Creator",
         media_type="comic",
+    )
+
+    assert comparison.accepted is True
+
+
+def test_comparison_accepts_a_title_alias():
+    comparison = compare_metadata(
+        MetadataResult(
+            "anilist",
+            "1",
+            "Attack on Titan",
+            "Hajime Isayama",
+            aliases=["Shingeki no Kyojin"],
+        ),
+        title="Shingeki no Kyojin",
+        creator="Hajime Isayama",
+        media_type="manga",
     )
 
     assert comparison.accepted is True
