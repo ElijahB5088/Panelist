@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from ..models import NormalizedMedia
-from .base import TrackingProvider
+from .base import TrackingProvider, valid_external_id
 
 
 class KitsuProvider(TrackingProvider):
@@ -59,7 +59,7 @@ class KitsuProvider(TrackingProvider):
                 continue
             if manga.get("type") and manga.get("type") != "manga":
                 continue
-            manga_id = str(manga.get("id") or entry.get("manga_id") or "")
+            manga_id = valid_external_id(manga.get("id") or entry.get("manga_id"))
             if not manga_id:
                 continue
             attributes = manga.get("attributes", manga)
@@ -76,6 +76,8 @@ class KitsuProvider(TrackingProvider):
                 publisher=attributes.get("publisher") or attributes.get("serialization"),
                 description=attributes.get("synopsis") or attributes.get("description"),
                 rating=self._number(attributes.get("averageRating")),
+                source="kitsu",
+                source_id=manga_id,
                 media_type="manga",
                 image_url=(attributes.get("posterImage") or {}).get("large"),
             )
@@ -83,6 +85,9 @@ class KitsuProvider(TrackingProvider):
                 (
                     normalized_media,
                     {
+                        "tracker_source": "kitsu",
+                        "tracker_media_id": manga_id,
+                        "tracker_item_id": valid_external_id(entry.get("library_entry_id")),
                         "status": self._normalize_status(entry.get("status")),
                         "progress": int(entry.get("progress", 0) or 0),
                         "user_rating": self._number(entry.get("rating")),
@@ -101,7 +106,12 @@ class KitsuProvider(TrackingProvider):
             manga_ref = item.get("relationships", {}).get("manga", {}).get("data", {})
             manga = included.get(manga_ref.get("id"))
             if manga:
-                entries.append({"type": manga.get("type"), "manga": manga, **item.get("attributes", {})})
+                entries.append({
+                    "type": manga.get("type"),
+                    "manga": manga,
+                    "library_entry_id": item.get("id"),
+                    **item.get("attributes", {}),
+                })
         return entries
 
     @staticmethod

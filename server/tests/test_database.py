@@ -16,7 +16,7 @@ def test_fresh_database_applies_all_migrations_with_sqlite_hardening(tmp_path):
             "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_events'"
         ).fetchone()[0]
 
-        assert latest == 7
+        assert latest == 8
         assert foreign_keys == 1
         assert journal_mode.lower() == "wal"
         assert audit_table == "audit_events"

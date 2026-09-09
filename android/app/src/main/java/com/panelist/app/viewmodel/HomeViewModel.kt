@@ -24,7 +24,6 @@ data class HomeUiState(
 class HomeViewModel(private val repository: RecommendationRepository) : ViewModel() {
 	private val _uiState = MutableStateFlow(HomeUiState())
 	val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-	private val refillAttempts = mutableSetOf<String>()
 
 	init {
 		refresh()
@@ -32,7 +31,6 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 
 	fun refresh() {
 		viewModelScope.launch {
-			refillAttempts.clear()
 			_uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
 			runCatching { repository.recommendedForYou() }
 				.onSuccess { recommendations ->
@@ -73,19 +71,20 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 	fun setMediaTypeFilter(mediaType: String?) {
 		val normalizedMediaType = mediaType?.let(::normalizeMediaType)
 		_uiState.value = _uiState.value.copy(mediaTypeFilter = normalizedMediaType, currentIndex = 0)
-		if (normalizedMediaType == null || normalizedMediaType in refillAttempts) return
-		if (_uiState.value.visibleRecommendations.size >= 10) return
+		if (normalizedMediaType == null) return
 
-		refillAttempts += normalizedMediaType
 		viewModelScope.launch {
 			runCatching { repository.recommendedForYou(normalizedMediaType) }
 				.onSuccess { additionalRecommendations ->
 					if (_uiState.value.mediaTypeFilter == normalizedMediaType) {
-						val merged = (_uiState.value.recommendations + additionalRecommendations).distinctBy { it.id }
-						_uiState.value = _uiState.value.copy(recommendations = merged)
+						_uiState.value = _uiState.value.copy(recommendations = additionalRecommendations)
 					}
 				}
-				.onFailure { refillAttempts -= normalizedMediaType }
+				.onFailure { error ->
+					if (_uiState.value.mediaTypeFilter == normalizedMediaType) {
+						_uiState.value = _uiState.value.copy(errorMessage = error.message ?: "Recommendations are unavailable right now.")
+					}
+				}
 		}
 	}
 }

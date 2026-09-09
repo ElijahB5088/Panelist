@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -72,7 +75,10 @@ fun HomeScreen(repository: RecommendationRepository, onRecommendationClick: (Rec
     )
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("PANELIST", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -112,7 +118,7 @@ fun HomeScreen(repository: RecommendationRepository, onRecommendationClick: (Rec
             else -> {
                 val nextPick = visibleRecommendations.getOrNull(state.currentIndex + 1)
                 Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
                     if (nextPick != null) {
@@ -174,7 +180,7 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
     }
     Surface(modifier = modifier.fillMaxWidth(), onClick = onClick, shape = RoundedCornerShape(24.dp), tonalElevation = 4.dp) {
         Column {
-            Box(modifier = Modifier.fillMaxWidth().height(270.dp).background(accent), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(accent), contentAlignment = Alignment.Center) {
                 Text("${pick.title.firstOrNull() ?: '?'}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 120.sp), fontWeight = FontWeight.Black)
                 Text("COVER PREVIEW", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge)
                 SubcomposeAsyncImage(

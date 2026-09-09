@@ -4,6 +4,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app import main
+from app.models import NormalizedMedia
 from app.security import decrypt_secret
 
 
@@ -112,3 +113,52 @@ def test_floppy_sync_ignores_unsupported_media_without_clearing_library(monkeypa
     ).fetchall()
     assert [row[0] for row in rows] == [media_id]
     assert client.get("/api/sync/status").json()["error"] is None
+
+
+def test_floppy_sync_rejects_conflicting_source_without_writing_media(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+    user_id = client.get("/api/me").json()["id"]
+    main.conn.execute(
+        "INSERT INTO media (id, title, source, source_id, media_type) VALUES (?, ?, ?, ?, ?)",
+        ("existing-media", "Existing", "floppy", "shared-id", "comic"),
+    )
+    main.conn.execute(
+        "INSERT INTO media_sources (media_id, source, source_id) VALUES (?, ?, ?)",
+        ("existing-media", "floppy", "shared-id"),
+    )
+    main.conn.commit()
+
+    async def fake_fetch_library(server_url, api_token):
+        return [{"media_id": "shared-id", "media_type": "comic"}]
+
+    def fake_normalize_library(payload):
+        return [
+            (
+                NormalizedMedia(
+                    id="new-media",
+                    title="New",
+                    creator=None,
+                    genres=[],
+                    source="floppy",
+                    source_id="shared-id",
+                    media_type="comic",
+                ),
+                {"status": "planned", "progress": 0, "user_rating": None},
+            )
+        ]
+
+    monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", fake_fetch_library)
+    monkeypatch.setattr(main.tracking_providers["floppy"], "normalize_library", fake_normalize_library)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 400
+    assert main.conn.execute("SELECT id FROM media WHERE id = 'new-media'").fetchone() is None
+    assert main.conn.execute(
+        "SELECT media_id FROM media_sources WHERE source = 'floppy' AND source_id = 'shared-id'"
+    ).fetchone()[0] == "existing-media"
+    assert client.get("/api/sync/status").json()["sync_status"] == "error"

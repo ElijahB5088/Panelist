@@ -28,3 +28,11 @@ def test_featured_excludes_normalized_library_titles(monkeypatch):
     results = asyncio.run(main._featured(request, surface="home", limit=1, excluded_titles={"saga"}))
 
     assert [result["primary"]["title"] for result in results] == ["Monstress"]
+
+
+def test_featured_response_normalizes_provider_media_type():
+    result = main._metadata_response(
+        MetadataResult("anilist", "one-piece", "One Piece", media_type=None)
+    )
+
+    assert result["media_type"] == "manga"

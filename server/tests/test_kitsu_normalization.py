@@ -45,7 +45,14 @@ def test_kitsu_normalization_is_manga_only():
     assert media.rating == 88.5
     assert media.media_type == "manga"
     assert media.image_url == "https://example.test/witch-hat.jpg"
-    assert library == {"status": "reading", "progress": 7, "user_rating": 5.0}
+    assert library == {
+        "tracker_source": "kitsu",
+        "tracker_media_id": "42",
+        "tracker_item_id": None,
+        "status": "reading",
+        "progress": 7,
+        "user_rating": 5.0,
+    }
 
 
 def test_kitsu_expands_json_api_included_manga():
@@ -64,3 +71,11 @@ def test_kitsu_expands_json_api_included_manga():
     }
 
     assert KitsuProvider._expand_included(payload)[0]["manga"]["id"] == "42"
+
+
+def test_kitsu_normalization_skips_placeholder_ids():
+    normalized = KitsuProvider().normalize_library([
+        {"type": "manga", "manga": {"id": "None", "type": "manga"}},
+    ])
+
+    assert normalized == []

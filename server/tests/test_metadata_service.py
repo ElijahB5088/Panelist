@@ -91,6 +91,18 @@ def test_group_metadata_prefers_requested_source_when_available():
     assert groups[0].primary.source == "openlibrary"
 
 
+def test_group_metadata_keeps_provider_type_fallbacks_separate():
+    results = [
+        MetadataResult("comicvine", "comic-1", "Saga", "Creator"),
+        MetadataResult("anilist", "manga-1", "Saga", "Creator"),
+    ]
+    providers = [NamedProvider("comicvine", []), NamedProvider("anilist", [])]
+
+    groups = group_metadata(results, providers)
+
+    assert len(groups) == 2
+
+
 def test_covered_primary_uses_variant_cover_when_primary_is_missing_one():
     results = [
         MetadataResult("comicvine", "1", "Saga", image_url=None),

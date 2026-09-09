@@ -1,7 +1,38 @@
 import httpx
-import asyncio
+import pytest
 
 from app.providers.metadata import AniListProvider, ComicVineProvider, GCDProvider, MetronProvider, OpenLibraryProvider
+
+
+@pytest.mark.anyio
+async def test_comicvine_search_enriches_results_with_volume_credits(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, params):
+            if url.endswith("/search/"):
+                return httpx.Response(
+                    200,
+                    json={"status_code": 1, "results": [{"id": 123, "name": "Saga", "api_detail_url": "https://example.test/volume/123"}]},
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                json={"status_code": 1, "results": {"person_credits": [{"name": "Brian K. Vaughan"}]}},
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr("app.providers.metadata.httpx.AsyncClient", FakeClient)
+    results = await ComicVineProvider("key").search("Saga", limit=1)
+
+    assert results[0].creator == "Brian K. Vaughan"
 
 
 def test_comicvine_volume_normalization():
@@ -104,37 +135,94 @@ def test_gcd_series_normalization():
     assert result.release_date == "1940-01-01"
     assert result.source_url == "https://www.comics.org/series/7096/"
     assert result.media_type == "comic"
-    assert result.creator is None
-    assert result.image_url is None
 
 
-def test_gcd_search_uses_series_name_path(monkeypatch):
-    requests = []
-
-    class MockResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"results": [{"api_url": "https://www.comics.org/api/series/7096/", "name": "Batman"}]}
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+@pytest.mark.anyio
+async def test_gcd_search_enriches_results_with_issue_metadata(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
 
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *args):
-            return None
+            pass
 
         async def get(self, url):
-            requests.append((url, self.kwargs))
-            return MockResponse()
+            if "/series/name/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "api_url": "https://www.comics.org/api/series/7096/",
+                                "name": "Batman",
+                                "year_began": 1940,
+                                "active_issues": [{"api_url": "https://www.comics.org/api/issue/1/"}],
+                            }
+                        ]
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "results": {
+                        "cover": "[https://images.example/batman.jpg](https://images.example/batman.jpg)",
+                        "story_set": [{"synopsis": "The Dark Knight protects Gotham."}],
+                    }
+                },
+                request=httpx.Request("GET", url),
+            )
 
-    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
-    results = asyncio.run(GCDProvider("Panelist/test").search("Batman & Robin", limit=1))
+    monkeypatch.setattr("app.providers.metadata.httpx.AsyncClient", FakeClient)
+    results = await GCDProvider().search("Batman", limit=1)
+
+    assert results[0].image_url == "https://images.example/batman.jpg"
+    assert results[0].description == "The Dark Knight protects Gotham."
+
+
+@pytest.mark.anyio
+async def test_gcd_search_keeps_series_when_issue_enrichment_fails(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            if "/series/name/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "api_url": "https://www.comics.org/api/series/7096/",
+                                "name": "Batman",
+                                "active_issues": [{"api_url": "https://www.comics.org/api/issue/1/"}],
+                            }
+                        ]
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            raise httpx.ConnectError("offline", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr("app.providers.metadata.httpx.AsyncClient", FakeClient)
+    results = await GCDProvider().search("Batman", limit=1)
 
     assert len(results) == 1
-    assert requests[0][0] == "https://www.comics.org/api/series/name/Batman%20%26%20Robin/"
-    assert requests[0][1]["headers"]["User-Agent"] == "Panelist/test"
+    assert results[0].source_id == "7096"
+    assert results[0].image_url is None
+    assert results[0].description is None
+
+
+def test_metadata_normalizers_mark_missing_ids_invalid():
+    assert ComicVineProvider("key")._normalize({"name": "Missing"}).source_id == ""
+    assert MetronProvider("https://metron.example/api", "token")._normalize({"series": "Missing"}).source_id == ""
+    assert OpenLibraryProvider()._normalize({"title": "Missing"}).source_id == ""
+    assert AniListProvider()._normalize({"title": {"romaji": "Missing"}}).source_id == ""

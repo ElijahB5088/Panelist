@@ -59,6 +59,24 @@ def test_recommendations_exclude_punctuation_variants_of_library_titles():
     assert "punctuated" not in [recommendation.media_id for recommendation in recs]
 
 
+def test_recommendations_preserve_non_latin_library_title_identity():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('nonlatin', '進撃の巨人', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.execute(
+        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (1, 'nonlatin', 'completed', 100, 5.0)"
+    )
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('nonlatin-duplicate', '進撃の巨人', 'Other', 'science-fiction', 5.0)"
+    )
+    conn.commit()
+
+    recs = build_recommendations(conn, 1, 10)
+
+    assert "nonlatin-duplicate" not in [recommendation.media_id for recommendation in recs]
+
+
 def test_recommendations_respect_dismiss_feedback():
     conn = setup_db()
     conn.execute("INSERT INTO recommendation_feedback (user_id, media_id, feedback, created_at) VALUES (1, 'a', 'dismiss', 'x')")

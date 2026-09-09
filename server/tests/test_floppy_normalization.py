@@ -108,3 +108,12 @@ def test_floppy_normalization_preserves_type_and_cover_url():
     media, _ = normalized[0]
     assert media.media_type == "comic"
     assert media.image_url == "https://covers.example/comic.jpg"
+
+
+def test_floppy_normalization_skips_missing_ids():
+    normalized = FloppyProvider().normalize_library([
+        {"media_type": "comic", "item": {"title": "Invalid"}},
+        {"media_type": "comic", "media_id": "None", "item": {"title": "Invalid"}},
+    ])
+
+    assert normalized == []
