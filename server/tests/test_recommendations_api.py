@@ -232,6 +232,28 @@ def test_recommendations_repair_comicvine_manhwa_before_filtering(monkeypatch):
     ) == ("Chugong", "manhwa", "anilist", "anilist-solo-leveling")
 
 
+def test_filtered_recommendations_do_not_wait_for_hanging_classification(monkeypatch):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    unresolved_id = f"{user_id}-unresolved"
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, source, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (unresolved_id, "Unresolved Title", None, "action", 5.0, "comicvine", None),
+    )
+    main.conn.commit()
+
+    async def hanging_match(title, creator=None, release_date=None):
+        await asyncio.sleep(60)
+        return None
+
+    monkeypatch.setattr(main.metadata_service, "authoritative_manga_match", hanging_match)
+
+    response = client.get("/api/recommendations", params={"media_type": "manga", "limit": 100})
+
+    assert response.status_code == 200
+    assert unresolved_id not in [item["id"] for item in response.json()]
+
+
 @pytest.mark.parametrize(
     ("candidate_title", "candidate_creator", "candidate_type"),
     [

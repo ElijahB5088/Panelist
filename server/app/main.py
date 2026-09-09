@@ -33,6 +33,8 @@ conn = get_conn()
 run_migrations(conn)
 RECOMMENDATION_COVER_ENRICHMENT_LIMIT = 8
 RECOMMENDATION_COVER_TIMEOUT_SECONDS = 3
+RECOMMENDATION_CLASSIFICATION_LIMIT = 8
+RECOMMENDATION_CLASSIFICATION_TIMEOUT_SECONDS = 1.5
 tracking_providers = {
     "floppy": FloppyProvider(),
     "kitsu": KitsuProvider(),
@@ -294,14 +296,17 @@ async def _recommendation_cover(row):
     return (*row[:6], source, source_id, match.image_url, source_url, row[10], row[11] or media_type, row[12])
 
 
-async def _repair_external_manga_rows() -> None:
+async def _repair_external_manga_rows(limit: int = RECOMMENDATION_CLASSIFICATION_LIMIT) -> None:
     rows = conn.execute(
         """
         SELECT id, title, creator, release_date
         FROM media
-                WHERE source IN ('comicvine', 'gcd', 'metron', 'openlibrary')
+        WHERE source IN ('comicvine', 'gcd', 'metron', 'openlibrary')
                     AND (media_type IS NULL OR media_type = 'comic')
+        ORDER BY id
+        LIMIT ?
         """
+        , (limit,)
     ).fetchall()
     if not rows:
         return
@@ -1098,10 +1103,18 @@ async def recommendations(
     if media_type and normalized_media_type not in {"comic", "manga", "manhwa", "manhua"}:
         raise HTTPException(400, "media_type must be comic, manga, manhwa, or manhua")
     if normalized_media_type in {"comic", "manga", "manhwa", "manhua"}:
-        await _repair_external_manga_rows()
+        try:
+            await asyncio.wait_for(
+                _repair_external_manga_rows(),
+                timeout=RECOMMENDATION_CLASSIFICATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            pass
     recs = build_recommendations(conn, user["id"], limit=limit, media_type=normalized_media_type)
     ids = [r.media_id for r in recs]
     if not ids:
+        if normalized_media_type:
+            return []
         featured_results = await _featured(
             request,
             surface="home",
