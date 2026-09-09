@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -62,8 +63,8 @@ fun PanelistApp() {
     val context = LocalContext.current
     val sessionStore = remember { com.panelist.app.data.session.SessionStore(context) }
     var serverUrl by remember { mutableStateOf(sessionStore.serverUrl()) }
-    var selectedMetadata by remember { mutableStateOf<MetadataGroup?>(null) }
-    var selectedLibraryItem by remember { mutableStateOf<LibraryItem?>(null) }
+    var selectedMetadata by rememberSaveable { mutableStateOf<MetadataGroup?>(null) }
+    var selectedLibraryItem by rememberSaveable { mutableStateOf<LibraryItem?>(null) }
     PanelistTheme {
         if (serverUrl == null) {
             ServerConnectionScreen(
@@ -148,7 +149,16 @@ fun PanelistApp() {
                     composable("library-detail") {
                         selectedLibraryItem?.let { LibraryDetailScreen(it) { nav.popBackStack() } }
                     }
-                    composable("profile") { ProfileScreen(profileRepository, sessionStore) }
+                    composable("profile") {
+                        ProfileScreen(
+                            repository = profileRepository,
+                            sessionStore = sessionStore,
+                            onLoggedOut = {
+                                sessionStore.clear()
+                                isAuthenticated = false
+                            }
+                        )
+                    }
                 }
             }
         }

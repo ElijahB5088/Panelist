@@ -93,6 +93,48 @@ def test_authoritative_manga_match_rejects_title_only_identity():
     assert asyncio.run(run()) is None
 
 
+def test_authoritative_manga_match_accepts_title_only_asian_origin():
+    provider = NamedProvider(
+        "anilist",
+        [
+            MetadataResult(
+                "anilist",
+                "jp-1",
+                "Japanese Title",
+                country_of_origin="JP",
+                media_type="manga",
+            )
+        ],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match("Japanese Title")
+
+    assert asyncio.run(run()).source_id == "jp-1"
+
+
+def test_authoritative_manga_match_rejects_title_only_western_origin():
+    provider = NamedProvider(
+        "anilist",
+        [
+            MetadataResult(
+                "anilist",
+                "us-1",
+                "Western Title",
+                country_of_origin="US",
+                media_type="manga",
+            )
+        ],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match("Western Title")
+
+    assert asyncio.run(run()) is None
+
+
 def test_authoritative_manga_match_rejects_ambiguous_or_conflicting_results():
     provider = NamedProvider(
         "anilist",

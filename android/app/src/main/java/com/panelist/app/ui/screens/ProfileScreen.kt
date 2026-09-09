@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -38,7 +39,11 @@ import com.panelist.app.data.session.SessionStore
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionStore? = null) {
+fun ProfileScreen(
+    repository: ProfileRepository? = null,
+    sessionStore: SessionStore? = null,
+    onLoggedOut: () -> Unit = {}
+) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var profile by remember { mutableStateOf<ProfileResponse?>(null) }
@@ -52,6 +57,8 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
     var connected by remember { mutableStateOf(false) }
     var autoSyncEnabled by remember { mutableStateOf(false) }
     var autoSyncInterval by remember { mutableStateOf("60") }
+    val syncInterval = autoSyncInterval.toIntOrNull()
+    val syncIntervalError = syncInterval == null || syncInterval !in 15..10080
 
     LaunchedEffect(repository) {
         if (repository != null) runCatching { repository.profile() }.onSuccess { loaded ->
@@ -179,7 +186,11 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                             checked = autoSyncEnabled,
                             onCheckedChange = { enabled ->
                                 val activeRepository = repository ?: return@Switch
-                                val interval = autoSyncInterval.toIntOrNull() ?: 60
+                                if (syncIntervalError) {
+                                    status = "Enter a sync interval between 15 minutes and 7 days."
+                                    return@Switch
+                                }
+                                val interval = syncInterval ?: return@Switch
                                 scope.launch {
                                     busy = true
                                     status = runCatching {
@@ -199,17 +210,21 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                         onValueChange = { autoSyncInterval = it.filter(Char::isDigit) },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Sync interval (minutes)") },
+                        isError = syncIntervalError,
+                        supportingText = {
+                            Text(if (syncIntervalError) "Use a value from 15 to 10080 minutes." else "15 minutes to 7 days")
+                        },
                         singleLine = true
                     )
                     Button(
-                        enabled = !busy && autoSyncInterval.toIntOrNull() != null,
+                        enabled = !busy && !syncIntervalError,
                         onClick = {
                             val activeRepository = repository ?: return@Button
                             scope.launch {
                                 busy = true
                                 status = runCatching {
                                     val updated = activeRepository.updateFloppySyncSettings(
-                                        FloppySyncSettings(autoSyncEnabled, autoSyncInterval.toInt())
+                                        FloppySyncSettings(autoSyncEnabled, syncInterval ?: 60)
                                     )
                                     autoSyncInterval = updated.interval_minutes.toString()
                                     "Sync interval updated."
@@ -242,6 +257,9 @@ fun ProfileScreen(repository: ProfileRepository? = null, sessionStore: SessionSt
                     }
                 }
             }
+        }
+        OutlinedButton(onClick = onLoggedOut, modifier = Modifier.fillMaxWidth()) {
+            Text("Sign out")
         }
     }
 }

@@ -152,6 +152,25 @@ def test_anilist_normalization_preserves_all_title_aliases():
     assert result.aliases == ["Shingeki no Kyojin", "進撃の巨人", "AOT"]
 
 
+@pytest.mark.parametrize("country", ["JP", "kr", "Cn"])
+def test_anilist_normalization_preserves_manga_origin(country):
+    result = AniListProvider()._normalize(
+        {
+            "id": 791,
+            "title": {"romaji": "Example"},
+            "countryOfOrigin": country,
+        }
+    )
+
+    assert result.country_of_origin == country.upper()
+
+
+def test_anilist_normalization_does_not_invent_missing_origin():
+    result = AniListProvider()._normalize({"id": 792, "title": {"romaji": "Example"}})
+
+    assert result.country_of_origin is None
+
+
 def test_metron_series_normalization():
     result = MetronProvider("https://metron.example/api", "token")._normalize(
         {

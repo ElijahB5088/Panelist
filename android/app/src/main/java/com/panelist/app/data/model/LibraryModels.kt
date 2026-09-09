@@ -18,7 +18,7 @@ data class LibraryItem(
     val rating: Double?,
     val image_url: String? = null,
     val source_url: String? = null
-)
+) : java.io.Serializable
 
 data class ProfileResponse(
     val user: ProfileUser,

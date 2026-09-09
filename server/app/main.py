@@ -206,6 +206,7 @@ def _metadata_response(result):
         "image_url": result.image_url,
         "source_url": result.source_url,
         "media_type": _media_type(result.media_type, result.source),
+        "country_of_origin": result.country_of_origin,
     }
 
 

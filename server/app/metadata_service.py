@@ -8,7 +8,7 @@ from collections import OrderedDict, defaultdict, deque
 from dataclasses import replace
 
 from .metadata import MetadataGroup, MetadataResult
-from .metadata_mapping import map_metadata, normalize_identity, normalize_year
+from .metadata_mapping import has_manga_origin, map_metadata, normalize_identity, normalize_year
 from .providers.metadata import MetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ class MetadataSearchService:
                 continue
             if source_year and candidate_year and abs(int(source_year) - int(candidate_year)) > 1:
                 continue
-            if not normalized_creator and not source_year:
+            if not normalized_creator and not source_year and not has_manga_origin(candidate):
                 continue
             matches.append(candidate)
 
@@ -195,8 +195,10 @@ def _associate_authoritative_manga(results: list[MetadataResult]) -> list[Metada
             tracker
             for tracker in tracker_results
             if _metadata_titles(tracker).intersection(_metadata_titles(result))
-            and year
-            and normalize_year(tracker.release_date) == year
+            and (
+                (year and normalize_year(tracker.release_date) == year)
+                or (not year and has_manga_origin(tracker))
+            )
             and (creator and normalize_identity(tracker.creator) == creator or not creator)
         ]
         match = matches[0] if len(matches) == 1 else None
@@ -240,10 +242,13 @@ def _equivalent_authoritative_matches(matches: list[MetadataResult]) -> bool:
     first = matches[0]
     creator = normalize_identity(first.creator)
     year = normalize_year(first.release_date)
+    origin = (first.country_of_origin or "").upper()
     for candidate in matches[1:]:
         if normalize_identity(candidate.creator) != creator:
             return False
         candidate_year = normalize_year(candidate.release_date)
         if year and candidate_year and abs(int(year) - int(candidate_year)) > 1:
+            return False
+        if origin and candidate.country_of_origin and origin != candidate.country_of_origin.upper():
             return False
     return True

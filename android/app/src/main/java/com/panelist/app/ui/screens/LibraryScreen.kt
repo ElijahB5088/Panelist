@@ -17,11 +17,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -30,17 +30,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
+import android.content.Intent
+import android.net.Uri
 import com.panelist.app.data.model.LibraryItem
 import com.panelist.app.data.repository.LibraryRepository
 
@@ -64,8 +69,9 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var reloadToken by remember { mutableStateOf(0) }
 
-    LaunchedEffect(selectedStatus, selectedSort, repository) {
+    LaunchedEffect(selectedStatus, selectedSort, repository, reloadToken) {
         if (repository == null) return@LaunchedEffect
         loading = true
         error = null
@@ -138,7 +144,10 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
         }
         when {
             loading -> Text("Loading your library...", style = MaterialTheme.typography.bodyLarge)
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+            error != null -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge)
+                Button(onClick = { reloadToken++ }) { Text("Try again") }
+            }
             items.isEmpty() -> EmptyLibraryStatus(selectedStatus)
             displayedItems.isEmpty() -> EmptyLibrarySearchStatus()
             isGridView -> LazyVerticalGrid(
@@ -159,10 +168,12 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
 private fun LibraryRow(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit) {
     Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().clickable { onOpenItem(item) }) {
         Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = item.image_url,
                 contentDescription = item.title,
                 modifier = Modifier.size(56.dp)
+                , loading = { LibraryCoverFallback(item) },
+                error = { LibraryCoverFallback(item) }
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.title, style = MaterialTheme.typography.titleMedium)
@@ -216,12 +227,23 @@ private fun LibraryCoverFallback(item: LibraryItem) {
 
 @Composable
 fun LibraryDetailScreen(item: LibraryItem, onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Back", modifier = Modifier.clickable(onClick = onBack), color = MaterialTheme.colorScheme.primary)
-        AsyncImage(
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
+        }
+        SubcomposeAsyncImage(
             model = item.image_url,
             contentDescription = item.title,
             modifier = Modifier.size(180.dp)
+            , loading = { LibraryCoverFallback(item) },
+            error = { LibraryCoverFallback(item) }
         )
         Text(item.title, style = MaterialTheme.typography.headlineLarge)
         item.creator?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -230,6 +252,11 @@ fun LibraryDetailScreen(item: LibraryItem, onBack: () -> Unit) {
             ?: item.progress?.let { Text("Progress ${"%,d".format(it)} ${item.progress_unit ?: "items"}") }
         Text("${item.source ?: "Unknown source"} / ${item.library_media_type ?: "media"} / ${item.media_id ?: item.id}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         item.genres.takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("  / ")) }
+        item.source_url?.let { sourceUrl ->
+            Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(sourceUrl))) }) {
+                Text("Open source")
+            }
+        }
     }
 }
 

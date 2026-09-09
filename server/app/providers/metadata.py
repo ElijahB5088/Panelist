@@ -320,7 +320,7 @@ class AniListProvider(MetadataProvider):
     query ($search: String!, $perPage: Int!) {
       Page(perPage: $perPage) {
         media(search: $search, type: MANGA) {
-          id title { romaji english native } synonyms description averageScore startDate { year month day }
+          id title { romaji english native } synonyms countryOfOrigin description averageScore startDate { year month day }
           coverImage { large } genres siteUrl
           staff(perPage: 3) { edges { node { name { full } } } }
         }
@@ -372,4 +372,5 @@ class AniListProvider(MetadataProvider):
             image_url=(row.get("coverImage") or {}).get("large"),
             source_url=row.get("siteUrl"),
             aliases=aliases,
+            country_of_origin=(row.get("countryOfOrigin") or "").upper() or None,
         )

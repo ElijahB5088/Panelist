@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from .metadata import MetadataResult
 
 
+MANGA_ORIGIN_CODES = frozenset({"CN", "JP", "KR"})
+
+
+def has_manga_origin(result: MetadataResult) -> bool:
+    return (result.country_of_origin or "").upper() in MANGA_ORIGIN_CODES
+
+
 @dataclass(frozen=True)
 class MetadataIdentity:
     title: str
