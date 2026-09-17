@@ -167,6 +167,143 @@ class CatalogRepository:
         )
         self.connection.commit()
 
+    def search_entities(self, query: str, entity_type: str | None = None, limit: int = 20) -> list[dict]:
+        normalized_query = normalize_identity(query)
+        if not normalized_query:
+            return []
+        type_clause = "AND entity_type = ?" if entity_type else ""
+        parameters: list[object] = [normalized_query, normalized_query]
+        if entity_type:
+            parameters.append(entity_type)
+        parameters.append(limit)
+        rows = self.connection.execute(
+            f"""
+            SELECT DISTINCT id, entity_type, title, description, start_date, end_date
+            FROM catalog_entities
+            WHERE (normalized_title LIKE ? OR id IN (
+                SELECT entity_id FROM catalog_aliases WHERE normalized_alias LIKE ?
+            )) {type_clause}
+            ORDER BY normalized_title, title
+            LIMIT ?
+            """,
+            [f"%{normalized_query}%", f"%{normalized_query}%", *parameters[2:]],
+        ).fetchall()
+        return [_entity_dict(row) for row in rows]
+
+    def get_entity(self, entity_id: str) -> dict | None:
+        row = self.connection.execute(
+            "SELECT id, entity_type, title, description, start_date, end_date FROM catalog_entities WHERE id = ?",
+            (entity_id,),
+        ).fetchone()
+        if not row:
+            return None
+
+        entity = _entity_dict(row)
+        entity["aliases"] = [
+            {"value": row[0], "language": row[1]}
+            for row in self.connection.execute(
+                "SELECT alias, language FROM catalog_aliases WHERE entity_id = ? ORDER BY alias", (entity_id,)
+            )
+        ]
+        entity["identifiers"] = [
+            {"type": row[0], "value": row[1]}
+            for row in self.connection.execute(
+                "SELECT identifier_type, identifier_value FROM catalog_identifiers WHERE entity_id = ? ORDER BY identifier_type, identifier_value",
+                (entity_id,),
+            )
+        ]
+        entity["credits"] = [
+            {"person_id": row[0], "person": row[1], "role": row[2], "credited_as": row[3]}
+            for row in self.connection.execute(
+                """
+                SELECT credits.person_entity_id, people.title, credits.role, credits.credited_as
+                FROM catalog_credits AS credits
+                JOIN catalog_entities AS people ON people.id = credits.person_entity_id
+                WHERE credits.entity_id = ?
+                ORDER BY credits.role, people.title
+                """,
+                (entity_id,),
+            )
+        ]
+        entity["sources"] = [
+            {
+                "source": row[0],
+                "source_id": row[1],
+                "source_url": row[2],
+                "retrieved_at": row[3],
+                "normalization_version": row[4],
+                "attribution": row[5],
+            }
+            for row in self.connection.execute(
+                """
+                SELECT records.source, records.source_id, records.source_url, records.retrieved_at,
+                       records.normalization_version, sources.attribution
+                FROM catalog_entity_sources AS links
+                JOIN catalog_source_records AS records ON records.id = links.source_record_id
+                LEFT JOIN catalog_sources AS sources ON sources.name = records.source
+                WHERE links.entity_id = ?
+                ORDER BY records.source
+                """,
+                (entity_id,),
+            )
+        ]
+        entity["relationships"] = self._relationships(entity_id, entity["entity_type"])
+        return entity
+
+    def _relationships(self, entity_id: str, entity_type: str) -> dict:
+        if entity_type == "series":
+            publisher = self.connection.execute(
+                "SELECT publisher_entity_id FROM catalog_series WHERE entity_id = ?", (entity_id,)
+            ).fetchone()
+            volumes = self.connection.execute(
+                """
+                SELECT entities.id, entities.entity_type, entities.title, entities.description,
+                       entities.start_date, entities.end_date
+                FROM catalog_volumes AS volumes
+                JOIN catalog_entities AS entities ON entities.id = volumes.entity_id
+                WHERE volumes.series_entity_id = ? ORDER BY volumes.volume_number, entities.title
+                """,
+                (entity_id,),
+            ).fetchall()
+            return {"publisher_id": publisher[0] if publisher else None, "volumes": [_entity_dict(row) for row in volumes]}
+        if entity_type == "volume":
+            series = self.connection.execute(
+                "SELECT series_entity_id FROM catalog_volumes WHERE entity_id = ?", (entity_id,)
+            ).fetchone()
+            issues = self.connection.execute(
+                """
+                SELECT entities.id, entities.entity_type, entities.title, entities.description,
+                       entities.start_date, entities.end_date
+                FROM catalog_issues AS issues
+                JOIN catalog_entities AS entities ON entities.id = issues.entity_id
+                WHERE issues.volume_entity_id = ? ORDER BY issues.issue_number, entities.title
+                """,
+                (entity_id,),
+            ).fetchall()
+            return {"series_id": series[0] if series else None, "issues": [_entity_dict(row) for row in issues]}
+        if entity_type == "issue":
+            volume = self.connection.execute(
+                "SELECT volume_entity_id, issue_number, publication_date FROM catalog_issues WHERE entity_id = ?",
+                (entity_id,),
+            ).fetchone()
+            return {
+                "volume_id": volume[0] if volume else None,
+                "issue_number": volume[1] if volume else None,
+                "publication_date": volume[2] if volume else None,
+            }
+        return {}
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _entity_dict(row: sqlite3.Row | tuple) -> dict:
+    return {
+        "id": row[0],
+        "entity_type": row[1],
+        "title": row[2],
+        "description": row[3],
+        "start_date": row[4],
+        "end_date": row[5],
+    }

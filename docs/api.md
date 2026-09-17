@@ -14,6 +14,8 @@ Implemented endpoints:
 - `GET /api/media`
 - `GET /api/media/{id}`
 - `GET /api/search?q=...`
+- `GET /api/catalog/search?q=...&entity_type=series&limit=20`
+- `GET /api/catalog/{id}`
 - `GET /api/metadata/search?q=...&limit=10`
 - `GET /api/featured?surface=discover|home&limit=10`
 - `GET /api/library?status=reading&sort=title_asc`
@@ -42,6 +44,14 @@ runs due syncs in the background; failures remain recorded in the integration
 status and are retried on the next interval.
 
 Authentication: bearer token issued by `/api/auth/login`.
+
+Catalog reads are public because they contain canonical metadata rather than
+user library state. Catalog search matches canonical titles and aliases and
+accepts `series`, `volume`, `issue`, `person`, `publisher`, or `edition` as an
+optional `entity_type`. Results are limited to 50 entries per request.
+Catalog detail responses include aliases, identifiers, credits, hierarchy
+relationships, and source attribution/provenance. Catalog writes and source
+ingestion are not public API operations yet.
 
 `GET /ready` checks database availability and migration initialization. It is
 intended for container health checks and returns `503` when the database is not

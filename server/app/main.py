@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .db import get_conn, run_migrations
+from .catalog_repository import CatalogRepository
 from .config import settings
 from .metadata_mapping import compare_metadata, normalize_identity
 from .metadata_service import MetadataRateLimitError, MetadataSearchService, covered_primary
@@ -31,6 +32,7 @@ from .security import (
 
 conn = get_conn()
 run_migrations(conn)
+catalog_repository = CatalogRepository(conn)
 RECOMMENDATION_COVER_ENRICHMENT_LIMIT = 8
 RECOMMENDATION_COVER_TIMEOUT_SECONDS = 3
 RECOMMENDATION_CLASSIFICATION_LIMIT = 8
@@ -1025,6 +1027,26 @@ def media_by_id(media_id: str, user=Depends(user_from_auth)):
         if user_state
         else None,
     }
+
+
+@app.get("/api/catalog/search")
+def catalog_search(q: str, entity_type: str | None = None, limit: int = 20):
+    if not q.strip():
+        return []
+    if limit < 1 or limit > 50:
+        raise HTTPException(400, "limit must be between 1 and 50")
+    allowed_types = {"series", "volume", "issue", "person", "publisher", "edition"}
+    if entity_type and entity_type not in allowed_types:
+        raise HTTPException(400, "invalid catalog entity type")
+    return catalog_repository.search_entities(q, entity_type=entity_type, limit=limit)
+
+
+@app.get("/api/catalog/{entity_id}")
+def catalog_entity(entity_id: str):
+    entity = catalog_repository.get_entity(entity_id)
+    if entity is None:
+        raise HTTPException(404, "Catalog entity not found")
+    return entity
 
 
 @app.get("/api/search")
