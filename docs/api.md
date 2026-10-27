@@ -44,11 +44,12 @@ Authenticated clients can enable it with the sync settings endpoint and choose
 an interval from 15 minutes through 7 days. The single Panelist server process
 runs due syncs in the background; failures remain recorded in the integration
 status and are retried on the next interval.
-`POST /api/sync` fetches the complete Floppy library by querying each supported
-media category (`movie`, `show`, `season`, and `anime`) with pagination and
-returns the number of imported items in its `imported` field. Explicitly
-unsupported category responses are skipped; authentication, server, timeout,
-and transport failures fail the sync with a bounded diagnostic. A successful
+`POST /api/sync` fetches the comic library by querying Floppy's comic-compatible
+media endpoints (`media/comic`, `media/comics`, `media/manga`, `media/manhwa`,
+and `media/manhua`) with pagination and
+returns the number of imported items in its `imported` field. Movies, shows,
+and anime are ignored. Explicitly unsupported category responses are skipped;
+authentication, server, timeout, and transport failures fail the sync with a bounded diagnostic. A successful
 sync with zero imported items means the upstream response contained no
 supported, identifiable media; it does not clear an existing library.
 

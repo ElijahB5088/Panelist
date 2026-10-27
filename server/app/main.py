@@ -518,7 +518,7 @@ async def sync_user_library(user_id: int) -> int:
                 payload = await active_provider.fetch_library(row[1], credential)
             normalized = active_provider.normalize_library(payload)
             synced_at = datetime.now(timezone.utc)
-            if payload and not normalized:
+            if not normalized:
                 next_sync_at = (
                     (synced_at + timedelta(minutes=row[4])).isoformat()
                     if row[3]
