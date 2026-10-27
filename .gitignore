@@ -3,9 +3,12 @@
 __pycache__/
 *.pyc
 server/data/
+data/
+.pytest_cache/
 .gradle/
 build/
 local.properties
 android/keystore.properties
-android/*.jks
-android/*.keystore
+*.jks
+*.keystore
+.agents/

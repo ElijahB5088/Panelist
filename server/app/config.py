@@ -7,6 +7,7 @@ class Settings:
     port = int(os.getenv("PANELIST_PORT", "8080"))
     secret_key = os.getenv("PANELIST_SECRET_KEY", "dev-secret")
     database_url = os.getenv("DATABASE_URL", "sqlite:///data/panelist.db")
+    session_ttl_days = int(os.getenv("SESSION_TTL_DAYS", "30"))
     sync_interval_minutes = int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))
     sync_interval_min_minutes = 15
     sync_interval_max_minutes = 10080
@@ -26,6 +27,8 @@ class Settings:
     trusted_proxy_headers = os.getenv("TRUSTED_PROXY_HEADERS", "false").lower() == "true"
 
     def validate_runtime(self) -> None:
+        if self.session_ttl_days < 1:
+            raise RuntimeError("SESSION_TTL_DAYS must be at least 1")
         if self.environment not in {"production", "prod"}:
             return
         if self.secret_key in {"", "dev-secret", "replace-this-with-a-long-random-value"}:

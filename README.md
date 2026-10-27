@@ -60,6 +60,27 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 - `http://localhost:8080/docs`
 
+### Connect the Android app
+
+Build or install the debug APK from `android/app/build/outputs/apk/debug/`
+after running `android/gradlew.bat assembleDebug`. In the Android emulator,
+use `http://10.0.2.2:8080/` for a server running on the development machine.
+For a physical device, use the host's LAN address only with a trusted HTTPS
+endpoint; release builds reject non-HTTPS server URLs. The device and server
+must be reachable on the same network.
+
+Create a Panelist account in the app, then open **Profile** to connect Floppy,
+Kitsu, or MyAnimeList. Floppy and Kitsu require a server URL and API token.
+MyAnimeList requires the server administrator to configure `MAL_CLIENT_ID`
+and `MAL_REDIRECT_URI` before browser authorization will work. After a
+successful connection, use **Sync library** and return to **For you** for
+recommendations.
+
+If the app cannot connect, first verify `GET /health` from the device's network,
+that the server port is exposed, and that HTTPS certificates are trusted.
+`localhost` inside Docker refers to the container, not the host; use
+`host.docker.internal` for a tracker running on the Docker host.
+
 ### Supported deployment model
 
 The supported deployment is one Panelist server process on one host using the
@@ -92,6 +113,10 @@ set `TRUSTED_PROXY_HEADERS=true` only when that proxy overwrites forwarding
 headers. The authenticated `GET /api/audit/logs` endpoint reports redacted
 authentication, integration, sync, and proxy observations for the current
 user. It never stores passwords, tokens, request bodies, or sensitive headers.
+Sessions expire after 30 days by default. Set `SESSION_TTL_DAYS` in `.env` to
+change that private-instance policy; users must sign in again after expiry.
+The Android app stores its access token using an Android Keystore-backed key
+and returns to the sign-in screen when the server rejects an expired session.
 
 ## Backend notes
 

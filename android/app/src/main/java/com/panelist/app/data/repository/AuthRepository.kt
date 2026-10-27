@@ -20,5 +20,11 @@ class AuthRepository(
         login(username, password)
     }
 
-    fun logout() = sessionStore.clear()
+    suspend fun logout() {
+        try {
+            api.logout()
+        } finally {
+            sessionStore.clear()
+        }
+    }
 }

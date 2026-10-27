@@ -64,7 +64,25 @@ def test_recommendations_exclude_read_items_and_enrich_covers(monkeypatch):
     assert candidate_id in [item["id"] for item in recommendations]
 
 
-def test_recommendations_enrich_coverless_candidate(monkeypatch):
+def test_recommendation_feedback_can_be_cleared():
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    media_id = f"{user_id}-feedback"
+    main.conn.execute(
+        "INSERT INTO media (id, title, genres, rating) VALUES (?, ?, ?, ?)",
+        (media_id, "Feedback", "science-fiction", 4.0),
+    )
+    main.conn.commit()
+
+    assert client.post(f"/api/recommendations/{media_id}/dismiss").status_code == 200
+    assert client.delete(f"/api/recommendations/{media_id}/feedback").json() == {"ok": True}
+    assert main.conn.execute(
+        "SELECT 1 FROM recommendation_feedback WHERE user_id=? AND media_id=?",
+        (user_id, media_id),
+    ).fetchone() is None
+
+
+def test_recommendations_defer_coverless_candidate_enrichment(monkeypatch):
     client = authenticated_client()
     user_id = client.get("/api/me").json()["id"]
     library_id = f"{user_id}-library"
@@ -104,6 +122,13 @@ def test_recommendations_enrich_coverless_candidate(monkeypatch):
 
     assert response.status_code == 200
     item = next(item for item in response.json() if item["id"] == candidate_id)
+    assert item["image_url"] is None
+
+    while not main._recommendation_enrichment_queue.empty():
+        asyncio.run(main.process_recommendation_enrichment_once())
+
+    enriched_response = client.get("/api/recommendations", params={"limit": 100})
+    item = next(item for item in enriched_response.json() if item["id"] == candidate_id)
     assert item["image_url"] == "https://covers.example/candidate.jpg"
     assert item["source"] == "comicvine"
     assert main.conn.execute("SELECT image_url FROM media WHERE id = ?", (candidate_id,)).fetchone()[0] == item["image_url"]
@@ -152,7 +177,7 @@ def test_recommendations_preserve_anilist_manga_type_during_cover_enrichment(mon
         main.conn.execute(
             "SELECT source, media_type, image_url FROM media WHERE id = ?", (candidate_id,)
         ).fetchone()
-    ) == ("anilist", "manga", "https://covers.example/one-piece.jpg")
+    ) == ("anilist", "manga", None)
 
 
 def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monkeypatch):

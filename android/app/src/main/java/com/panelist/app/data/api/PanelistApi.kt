@@ -31,6 +31,9 @@ interface PanelistApi {
     @POST("/api/auth/register")
     suspend fun register(@Body credentials: Credentials): FeedbackResponse
 
+    @POST("/api/auth/logout")
+    suspend fun logout(): FeedbackResponse
+
     @GET("/api/recommendations")
     suspend fun recommendations(
         @Query("limit") limit: Int = 20,

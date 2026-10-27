@@ -37,6 +37,8 @@ RECOMMENDATION_COVER_ENRICHMENT_LIMIT = 8
 RECOMMENDATION_COVER_TIMEOUT_SECONDS = 3
 RECOMMENDATION_CLASSIFICATION_LIMIT = 8
 RECOMMENDATION_CLASSIFICATION_TIMEOUT_SECONDS = 1.5
+_recommendation_enrichment_queue: asyncio.Queue[str] = asyncio.Queue()
+_queued_recommendation_enrichment: set[str] = set()
 tracking_providers = {
     "floppy": FloppyProvider(),
     "kitsu": KitsuProvider(),
@@ -74,11 +76,13 @@ async def lifespan(_: FastAPI):
     )
     conn.commit()
     worker = asyncio.create_task(automatic_sync_worker())
+    enrichment_worker = asyncio.create_task(recommendation_enrichment_worker())
     try:
         yield
     finally:
         worker.cancel()
-        await asyncio.gather(worker, return_exceptions=True)
+        enrichment_worker.cancel()
+        await asyncio.gather(worker, enrichment_worker, return_exceptions=True)
 
 
 app = FastAPI(title="Panelist Server", version="0.1.0", lifespan=lifespan)
@@ -296,6 +300,47 @@ async def _recommendation_cover(row):
     _upsert_media_source(row[0], match.source, match.source_id, match.source_url)
     conn.commit()
     return (*row[:6], source, source_id, match.image_url, source_url, row[10], row[11] or media_type, row[12])
+
+
+async def process_recommendation_enrichment_once() -> None:
+    try:
+        media_id = _recommendation_enrichment_queue.get_nowait()
+    except asyncio.QueueEmpty:
+        return
+    _queued_recommendation_enrichment.discard(media_id)
+    try:
+        row = conn.execute(
+            """
+            SELECT id, title, creator, genres, rating, description, source, source_id,
+                   image_url, source_url, tracker_source, media_type, release_date
+            FROM media WHERE id = ?
+            """,
+            (media_id,),
+        ).fetchone()
+        if row and not (row[8] and row[8].strip()):
+            await asyncio.wait_for(
+                _recommendation_cover(row),
+                RECOMMENDATION_COVER_TIMEOUT_SECONDS,
+            )
+    except (
+        asyncio.TimeoutError,
+        httpx.HTTPError,
+        sqlite3.Error,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        pass
+    finally:
+        _recommendation_enrichment_queue.task_done()
+
+
+async def recommendation_enrichment_worker() -> None:
+    while True:
+        if _recommendation_enrichment_queue.empty():
+            await asyncio.sleep(0.1)
+        else:
+            await process_recommendation_enrichment_once()
 
 
 async def _repair_external_manga_rows(limit: int = RECOMMENDATION_CLASSIFICATION_LIMIT) -> None:
@@ -588,11 +633,21 @@ def user_from_auth(authorization: str | None = Header(default=None)):
         raise HTTPException(401, "Missing auth token")
     token = auth.removeprefix("Bearer ").strip()
     row = conn.execute(
-        "SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?",
+        "SELECT u.id, u.username, s.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?",
         (token,),
     ).fetchone()
     if not row:
         raise HTTPException(401, "Invalid auth token")
+    try:
+        created_at = datetime.fromisoformat(row[2])
+    except (TypeError, ValueError):
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.commit()
+        raise HTTPException(401, "Invalid auth session")
+    if created_at < datetime.now(timezone.utc) - timedelta(days=settings.session_ttl_days):
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.commit()
+        raise HTTPException(401, "Session expired")
     return {"id": row[0], "username": row[1], "token": token}
 
 
@@ -629,6 +684,13 @@ def refresh(user=Depends(user_from_auth)):
     conn.execute("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)", (new_token, user["id"], now_iso()))
     conn.commit()
     return {"access_token": new_token}
+
+
+@app.post("/api/auth/logout")
+def logout(user=Depends(user_from_auth)):
+    conn.execute("DELETE FROM sessions WHERE token = ?", (user["token"],))
+    conn.commit()
+    return {"ok": True}
 
 
 @app.get("/api/me")
@@ -1118,9 +1180,12 @@ async def recommendations(
     user=Depends(user_from_auth),
     limit: int = 100,
     media_type: str | None = None,
+    mode: str = "balanced",
 ):
     if limit < 1 or limit > 100:
         raise HTTPException(400, "limit must be between 1 and 100")
+    if mode not in {"balanced", "familiar", "discovery"}:
+        raise HTTPException(400, "mode must be balanced, familiar, or discovery")
     normalized_media_type = _media_type(media_type) if media_type else None
     if media_type and normalized_media_type not in {"comic", "manga", "manhwa", "manhua"}:
         raise HTTPException(400, "media_type must be comic, manga, manhwa, or manhua")
@@ -1132,7 +1197,13 @@ async def recommendations(
             )
         except asyncio.TimeoutError:
             pass
-    recs = build_recommendations(conn, user["id"], limit=limit, media_type=normalized_media_type)
+    recs = build_recommendations(
+        conn,
+        user["id"],
+        limit=limit,
+        media_type=normalized_media_type,
+        mode=mode,
+    )
     ids = [r.media_id for r in recs]
     if not ids:
         if normalized_media_type:
@@ -1166,17 +1237,10 @@ async def recommendations(
         for rec in recs
         if rec.media_id in by_id and not (by_id[rec.media_id][8] and by_id[rec.media_id][8].strip())
     ]
-    rows_to_enrich = coverless_rows[:RECOMMENDATION_COVER_ENRICHMENT_LIMIT]
-    enriched_rows = await asyncio.gather(
-        *(
-            asyncio.wait_for(_recommendation_cover(row), RECOMMENDATION_COVER_TIMEOUT_SECONDS)
-            for row in rows_to_enrich
-        ),
-        return_exceptions=True,
-    )
-    for original_row, enriched_row in zip(rows_to_enrich, enriched_rows):
-        if not isinstance(enriched_row, Exception):
-            by_id[original_row[0]] = enriched_row
+    for row in coverless_rows[:RECOMMENDATION_COVER_ENRICHMENT_LIMIT]:
+        if row[0] not in _queued_recommendation_enrichment:
+            _queued_recommendation_enrichment.add(row[0])
+            _recommendation_enrichment_queue.put_nowait(row[0])
     response = []
     for rec in recs:
         if rec.media_id not in by_id:
@@ -1240,4 +1304,14 @@ def like(media_id: str, user=Depends(user_from_auth)):
 @app.post("/api/recommendations/{media_id}/dismiss")
 def dismiss(media_id: str, user=Depends(user_from_auth)):
     _feedback(user["id"], media_id, "dismiss")
+    return {"ok": True}
+
+
+@app.delete("/api/recommendations/{media_id}/feedback")
+def clear_feedback(media_id: str, user=Depends(user_from_auth)):
+    conn.execute(
+        "DELETE FROM recommendation_feedback WHERE user_id = ? AND media_id = ?",
+        (user["id"], media_id),
+    )
+    conn.commit()
     return {"ok": True}

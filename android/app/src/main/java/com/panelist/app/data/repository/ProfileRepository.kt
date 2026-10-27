@@ -19,4 +19,5 @@ class ProfileRepository(private val api: PanelistApi) {
     suspend fun authorizeMAL(): String = api.authorizeMAL().authorization_url
     suspend fun sync(): Boolean = api.sync().ok
     suspend fun syncStatus(): SyncStatus = api.syncStatus()
+    suspend fun logout(): Boolean = api.logout().ok
 }

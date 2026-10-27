@@ -10,7 +10,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiFactory {
-    fun create(sessionStore: SessionStore, baseUrl: String): PanelistApi {
+    fun create(sessionStore: SessionStore, baseUrl: String, onUnauthorized: () -> Unit = {}): PanelistApi {
         val authInterceptor = Interceptor { chain ->
             val token = sessionStore.token()
             val request = chain.request().newBuilder().apply {
@@ -18,7 +18,12 @@ object ApiFactory {
                     header("Authorization", "Bearer $token")
                 }
             }.build()
-            chain.proceed(request)
+            val response = chain.proceed(request)
+            if (response.code == 401) {
+                sessionStore.clear()
+                onUnauthorized()
+            }
+            response
         }
 
         return Retrofit.Builder()

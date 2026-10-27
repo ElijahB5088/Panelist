@@ -47,6 +47,8 @@ import com.panelist.app.data.repository.AuthRepository
 import com.panelist.app.data.repository.RecommendationRepository
 import com.panelist.app.data.repository.LibraryRepository
 import com.panelist.app.data.repository.ProfileRepository
+import android.os.Handler
+import android.os.Looper
 
 private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -76,10 +78,14 @@ fun PanelistApp() {
             )
             return@PanelistTheme
         }
-        val api = remember(serverUrl) { ApiFactory.create(sessionStore, serverUrl!!) }
+        var isAuthenticated by remember(serverUrl) { mutableStateOf(authRepositoryIsAuthenticated(sessionStore)) }
+        val api = remember(serverUrl) {
+            ApiFactory.create(sessionStore, serverUrl!!) {
+                Handler(Looper.getMainLooper()).post { isAuthenticated = false }
+            }
+        }
         val authRepository = remember(api) { AuthRepository(api, sessionStore) }
         val metadataRepository = remember(api) { MetadataRepository(api) }
-        var isAuthenticated by remember(serverUrl) { mutableStateOf(authRepository.isAuthenticated()) }
         if (!isAuthenticated) {
             AuthScreen(authRepository) { isAuthenticated = true }
             return@PanelistTheme
@@ -160,10 +166,14 @@ fun PanelistApp() {
                         )
                     }
                 }
+
             }
         }
     }
 }
+
+private fun authRepositoryIsAuthenticated(sessionStore: com.panelist.app.data.session.SessionStore): Boolean =
+    sessionStore.token() != null
 
 private fun Recommendation.toMetadataGroup(): MetadataGroup {
     val result = MetadataResult(

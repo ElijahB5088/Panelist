@@ -5,12 +5,14 @@ Implemented endpoints:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
+- `POST /api/auth/logout`
 - `GET /api/me`
 - `GET /api/profile`
-- `GET /api/recommendations?limit=100&media_type=comic|manga|manhwa|manhua`
+- `GET /api/recommendations?limit=100&media_type=comic|manga|manhwa|manhua&mode=balanced|familiar|discovery`
 - `GET /api/recommendations/{id}`
 - `POST /api/recommendations/{id}/like`
 - `POST /api/recommendations/{id}/dismiss`
+- `DELETE /api/recommendations/{id}/feedback`
 - `GET /api/media`
 - `GET /api/media/{id}`
 - `GET /api/search?q=...`
@@ -43,7 +45,9 @@ an interval from 15 minutes through 7 days. The single Panelist server process
 runs due syncs in the background; failures remain recorded in the integration
 status and are retried on the next interval.
 
-Authentication: bearer token issued by `/api/auth/login`.
+Authentication: bearer token issued by `/api/auth/login`. Sessions expire after
+`SESSION_TTL_DAYS` days (30 by default); expired sessions must authenticate
+again. `/api/auth/logout` revokes the current session.
 
 Catalog reads are public because they contain canonical metadata rather than
 user library state. Catalog search matches canonical titles and aliases and
@@ -111,3 +115,20 @@ The optional `media_type` parameter filters recommendations before the limit is
 applied and accepts `comic`, `manga`, `manhwa`, or `manhua`. Records that
 cannot be classified confidently have no media type and are excluded from
 these category filters.
+
+The optional `mode` parameter defaults to `balanced`. `familiar` keeps items
+with a direct creator or genre match, while `discovery` favors highly rated
+items outside the user's strongest existing creator matches. Recent library
+and feedback activity has more influence than old activity, and result
+reranking limits excessive concentration on one creator or genre. Existing
+clients may omit `mode` and retain the balanced behavior.
+
+Missing recommendation covers are queued for deferred enrichment by the
+single-process server worker. The initial response may have a null
+`image_url`; a later request returns the cover after a provider succeeds.
+Provider failures are isolated and retried when the item is queued again.
+
+Recommendation feedback is user-scoped. Dismissals are strongest when recent
+and gradually become eligible again after roughly one month; clients can
+explicitly undo a like or dismissal with
+`DELETE /api/recommendations/{id}/feedback`.

@@ -94,6 +94,14 @@ fun ProfileScreen(
                     FilterChip(selected = trackerChoice == "kitsu", onClick = { trackerChoice = "kitsu"; if (serverUrl.isBlank()) serverUrl = "https://kitsu.io" }, label = { Text("Kitsu manga") })
                     FilterChip(selected = trackerChoice == "mal", onClick = { trackerChoice = "mal" }, label = { Text("MAL manga") })
                 }
+                Text(
+                    when (trackerChoice) {
+                        "floppy" -> "Floppy syncs your connected comic library. Enter its server URL and API token."
+                        "kitsu" -> "Kitsu imports manga only. Use https://kitsu.io unless you run a compatible Kitsu server."
+                        else -> "MyAnimeList imports manga through browser authorization; no token is entered here."
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (trackerChoice == "mal") {
                     Button(
                         enabled = repository != null && !busy,
@@ -258,7 +266,25 @@ fun ProfileScreen(
                 }
             }
         }
-        OutlinedButton(onClick = onLoggedOut, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    busy = true
+                    status = try {
+                        repository?.logout()
+                        null
+                    } catch (exception: Exception) {
+                        exception.message ?: "Could not sign out cleanly."
+                    } finally {
+                        sessionStore?.clear()
+                        onLoggedOut()
+                    }
+                    busy = false
+                }
+            },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Text("Sign out")
         }
     }
