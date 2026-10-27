@@ -113,6 +113,40 @@ class HomeViewModelTest {
         assertEquals(listOf("manga"), viewModel.uiState.value.recommendations.map { it.id })
     }
 
+    @Test
+    fun clearingFilterReloadsAllRecommendationsWithoutShowingStaleCards() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val comicRequest = CompletableDeferred<List<Recommendation>>()
+        val allRequest = CompletableDeferred<List<Recommendation>>()
+        val repository = FakeRecommendationRepository(
+            recommendations = listOf(recommendation("initial", "manga")),
+            filteredRequests = mapOf("comic" to comicRequest),
+            unfilteredRequests = ArrayDeque(
+                listOf(
+                    CompletableDeferred<List<Recommendation>>().apply {
+                        complete(listOf(recommendation("initial", "manga")))
+                    },
+                    allRequest
+                )
+            )
+        )
+        val viewModel = HomeViewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.setMediaTypeFilter("comic")
+        assertTrue(viewModel.uiState.value.visibleRecommendations.isEmpty())
+        comicRequest.complete(listOf(recommendation("comic", "comic")))
+        advanceUntilIdle()
+
+        viewModel.setMediaTypeFilter(null)
+        assertTrue(viewModel.uiState.value.visibleRecommendations.isEmpty())
+        allRequest.complete(listOf(recommendation("all", "manga")))
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.uiState.value.mediaTypeFilter)
+        assertEquals(listOf("all"), viewModel.uiState.value.visibleRecommendations.map { it.id })
+    }
+
     private fun recommendation(id: String, mediaType: String? = null) = Recommendation(
         id = id,
         title = id,
@@ -129,13 +163,15 @@ private class FakeRecommendationRepository(
     private val recommendations: List<Recommendation>,
     var failLike: Boolean = false,
     private val likeRequest: CompletableDeferred<Unit>? = null,
-    private val filteredRequests: Map<String, CompletableDeferred<List<Recommendation>>> = emptyMap()
+    private val filteredRequests: Map<String, CompletableDeferred<List<Recommendation>>> = emptyMap(),
+    private val unfilteredRequests: ArrayDeque<CompletableDeferred<List<Recommendation>>> = ArrayDeque()
 ) : RecommendationRepository(fakeApi()) {
     val likedIds = mutableListOf<String>()
     var likeCallCount = 0
         private set
 
-    override suspend fun recommendedForYou(): List<Recommendation> = recommendations
+    override suspend fun recommendedForYou(): List<Recommendation> =
+        unfilteredRequests.removeFirstOrNull()?.await() ?: recommendations
 
     override suspend fun recommendedForYou(mediaType: String): List<Recommendation> =
         filteredRequests[mediaType]?.await() ?: recommendations.filter { it.media_type == mediaType }

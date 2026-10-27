@@ -305,6 +305,19 @@ async def _recommendation_cover(row):
     return (*row[:6], source, source_id, match.image_url, source_url, row[10], row[11] or media_type, row[12])
 
 
+def _is_placeholder_creator(value: str | None) -> bool:
+    return normalize_identity(value) in {
+        "",
+        "comic",
+        "comics",
+        "manga",
+        "unknown",
+        "n a",
+        "none",
+        "null",
+    }
+
+
 async def process_recommendation_enrichment_once() -> None:
     try:
         media_id = _recommendation_enrichment_queue.get_nowait()
@@ -364,7 +377,7 @@ async def _repair_external_manga_rows(limit: int = RECOMMENDATION_CLASSIFICATION
         *(
             metadata_service.authoritative_manga_match(
                 row[1],
-                row[2] if normalize_identity(row[2]) not in {"comic", "comics", "manga", "unknown", "n a"} else None,
+                None if _is_placeholder_creator(row[2]) else row[2],
                 row[3],
             )
             for row in rows
@@ -374,6 +387,10 @@ async def _repair_external_manga_rows(limit: int = RECOMMENDATION_CLASSIFICATION
     changed = False
     for row, match in zip(rows, matches):
         if isinstance(match, Exception) or match is None:
+            continue
+        # A tracker result found through a broad title search must not replace
+        # a source record unless its canonical title is an exact match.
+        if normalize_identity(match.title) != normalize_identity(row[1]):
             continue
         conn.execute(
             """
@@ -1254,7 +1271,7 @@ async def recommendations(
         row = by_id[rec.media_id]
         normalized_type = _media_type(row[11], row[6], row[10], row[1])
         creator = row[2]
-        if row[6] == "comicvine" and normalize_identity(creator) in {"comic", "comics", "manga", "unknown", "n a"}:
+        if _is_placeholder_creator(creator):
             creator = None
         if normalized_type != row[11] or creator != row[2]:
             conn.execute(

@@ -122,7 +122,15 @@ receive source-backed featured picks with `why: "Featured pick"`.
 The optional `media_type` parameter filters recommendations before the limit is
 applied and accepts `comic`, `manga`, `manhwa`, or `manhua`. Records that
 cannot be classified confidently have no media type and are excluded from
-these category filters.
+these category filters. A requested category is exact-type-only: if no
+recommendations match that type, the endpoint returns an empty list rather
+than falling back to another category.
+
+Metadata repair preserves the source record when an external result is
+ambiguous. Title resemblance alone is not enough to reclassify a comic as
+manga; the canonical title must match exactly and the external result must
+also satisfy the provider's identity checks. Missing or placeholder creators
+are omitted and are never used to generate creator-affinity explanations.
 
 The optional `mode` parameter defaults to `balanced`. `familiar` keeps items
 with a direct creator or genre match, while `discovery` favors highly rated

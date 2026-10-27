@@ -154,6 +154,31 @@ def test_authoritative_manga_match_rejects_title_only_western_origin():
     assert asyncio.run(run()) is None
 
 
+def test_authoritative_manga_match_does_not_conflate_stray_dogs_titles():
+    provider = NamedProvider(
+        "anilist",
+        [
+            MetadataResult(
+                "anilist",
+                "bungou-stray-dogs",
+                "Bungou Stray Dogs",
+                "Kafka Asagiri",
+                media_type="manga",
+                country_of_origin="JP",
+            )
+        ],
+    )
+    service = MetadataSearchService([provider], upstream_interval_seconds=0)
+
+    async def run():
+        return await service.authoritative_manga_match(
+            "Stray Dogs",
+            creator="Image Comics",
+        )
+
+    assert asyncio.run(run()) is None
+
+
 def test_authoritative_manga_match_rejects_ambiguous_or_conflicting_results():
     provider = NamedProvider(
         "anilist",

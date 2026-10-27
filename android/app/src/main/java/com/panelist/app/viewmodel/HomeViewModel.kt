@@ -21,11 +21,8 @@ data class HomeUiState(
 	val feedbackErrorMessage: String? = null
 ) {
 	val visibleRecommendations: List<Recommendation>
-	get() = if (isFilterLoading) {
-		recommendations
-	} else {
-		recommendations.filter { mediaTypeFilter == null || normalizeMediaType(it.media_type, it.source) == mediaTypeFilter }
-	}
+	get() = if (isFilterLoading) emptyList()
+	else recommendations.filter { mediaTypeFilter == null || normalizeMediaType(it.media_type, it.source) == mediaTypeFilter }
 }
 
 class HomeViewModel(private val repository: RecommendationRepository) : ViewModel() {
@@ -103,14 +100,17 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 		_uiState.value = _uiState.value.copy(
 			mediaTypeFilter = normalizedMediaType,
 			currentIndex = 0,
-			isLoading = normalizedMediaType != null,
+			isLoading = true,
 			isFilterLoading = normalizedMediaType != null,
+			recommendations = emptyList(),
 			errorMessage = null
 		)
-		if (normalizedMediaType == null) return
 
 		viewModelScope.launch {
-			runCatching { repository.recommendedForYou(normalizedMediaType) }
+			runCatching {
+				if (normalizedMediaType == null) repository.recommendedForYou()
+				else repository.recommendedForYou(normalizedMediaType)
+			}
 				.onSuccess { additionalRecommendations ->
 					if (generation == requestGeneration && _uiState.value.mediaTypeFilter == normalizedMediaType) {
 						_uiState.value = _uiState.value.copy(
@@ -125,6 +125,7 @@ class HomeViewModel(private val repository: RecommendationRepository) : ViewMode
 						_uiState.value = _uiState.value.copy(
 							isLoading = false,
 							isFilterLoading = false,
+							recommendations = emptyList(),
 							errorMessage = error.message ?: "Recommendations are unavailable right now."
 						)
 					}

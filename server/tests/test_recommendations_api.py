@@ -216,6 +216,40 @@ def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monk
     ) == ("Yoshihiro Togashi", "manga", "anilist", "anilist-hxh")
 
 
+def test_recommendations_do_not_reclassify_stray_dogs_from_alias_match(monkeypatch):
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    candidate_id = f"{user_id}-stray-dogs"
+    main.conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating, source, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (candidate_id, "Stray Dogs", "Image Comics", "horror", 5.0, "comicvine", "comic"),
+    )
+    main.conn.commit()
+
+    async def authoritative_manga_match(title, creator=None, release_date=None):
+        return MetadataResult(
+            "anilist",
+            "bungou-stray-dogs",
+            "Bungou Stray Dogs",
+            "Kafka Asagiri",
+            media_type="manga",
+            country_of_origin="JP",
+        )
+
+    monkeypatch.setattr(main.metadata_service, "authoritative_manga_match", authoritative_manga_match)
+
+    response = client.get("/api/recommendations", params={"media_type": "comic", "limit": 100})
+
+    assert response.status_code == 200
+    assert candidate_id in [item["id"] for item in response.json()]
+    assert tuple(
+        main.conn.execute(
+            "SELECT title, creator, media_type, tracker_source FROM media WHERE id = ?",
+            (candidate_id,),
+        ).fetchone()
+    ) == ("Stray Dogs", "Image Comics", "comic", None)
+
+
 def test_recommendations_repair_comicvine_manhwa_before_filtering(monkeypatch):
     client = authenticated_client()
     user_id = client.get("/api/me").json()["id"]
