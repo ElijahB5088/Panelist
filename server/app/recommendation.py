@@ -15,7 +15,8 @@ def _split_csv(text: str | None) -> list[str]:
 
 
 def _normalize(value: str | None) -> str:
-    return " ".join((value or "").casefold().split())
+    normalized = " ".join((value or "").casefold().split())
+    return "" if normalized in {"unknown", "n/a", "n a", "none", "null", "comic", "comics", "manga"} else normalized
 
 
 def _add_affinity(target: dict[str, float], key: str, weight: float) -> None:
@@ -50,7 +51,6 @@ def library_title_keys(conn: sqlite3.Connection, user_id: int) -> set[str]:
             FROM user_library ul
             JOIN media m ON m.id = ul.media_id
             WHERE ul.user_id = ?
-              AND (ul.status = 'completed' OR COALESCE(ul.progress, 0) > 0)
             """,
             (user_id,),
         ).fetchall()
@@ -97,7 +97,6 @@ def build_recommendations(
             SELECT media_id
             FROM user_library
             WHERE user_id = ?
-              AND (status = 'completed' OR COALESCE(progress, 0) > 0)
             """,
             (user_id,),
         ).fetchall()

@@ -96,7 +96,7 @@ def test_completed_unrated_items_seed_recommendations_and_normalize_genres():
     assert "a" in [recommendation.media_id for recommendation in recs]
 
 
-def test_planned_items_remain_eligible_but_progressed_items_do_not():
+def test_all_library_items_are_excluded_from_recommendations():
     conn = setup_db()
     conn.execute(
         "INSERT INTO media (id, title, creator, genres, rating) VALUES ('planned', 'Planned', 'Other', 'science-fiction', 5.0)"
@@ -114,7 +114,7 @@ def test_planned_items_remain_eligible_but_progressed_items_do_not():
 
     ids = [recommendation.media_id for recommendation in build_recommendations(conn, 1, 10)]
 
-    assert "planned" in ids
+    assert "planned" not in ids
     assert "progressed" not in ids
 
 
@@ -164,6 +164,18 @@ def test_missing_creator_metadata_does_not_create_a_creator_match():
     conn.commit()
 
     assert "missing-creator" not in [recommendation.media_id for recommendation in build_recommendations(conn, 1, 10)]
+
+
+def test_placeholder_creator_does_not_create_a_creator_match():
+    conn = setup_db()
+    conn.execute(
+        "INSERT INTO media (id, title, creator, genres, rating) VALUES ('placeholder-creator', 'Placeholder', NULL, NULL, 0)"
+    )
+    conn.commit()
+
+    assert "placeholder-creator" not in [
+        recommendation.media_id for recommendation in build_recommendations(conn, 1, 10)
+    ]
 
 
 def test_reason_names_the_library_item_that_provided_the_creator_signal():

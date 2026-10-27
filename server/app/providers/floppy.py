@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from ..models import NormalizedMedia
+from ..metadata_mapping import normalize_identity
 from .base import TrackingProvider, valid_external_id
 
 
@@ -102,7 +103,7 @@ class FloppyProvider(TrackingProvider):
             return items
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
-        normalized: list[tuple[NormalizedMedia, dict]] = []
+        normalized_by_identity: dict[tuple[str, str], tuple[NormalizedMedia, dict]] = {}
         for row in payload:
             media = row.get("item") or row.get("media") or row.get("data") or {}
             if not isinstance(media, dict):
@@ -146,10 +147,11 @@ class FloppyProvider(TrackingProvider):
             )
             if not external_id:
                 continue
+            creator = self._creator(row, media)
             normalized_media = NormalizedMedia(
                 id=external_id,
                 title=media.get("title") or row.get("title") or "Unknown",
-                creator=media.get("creator") or row.get("creator") or row.get("source") or "Unknown",
+                creator=creator,
                 genres=media.get("genres", row.get("genres", [])) or [],
                 publisher=media.get("publisher"),
                 description=media.get("description") or media.get("synopsis"),
@@ -167,8 +169,49 @@ class FloppyProvider(TrackingProvider):
                 "progress": int(row.get("progress", 0) or 0),
                 "user_rating": row.get("score") or row.get("rating"),
             }
-            normalized.append((normalized_media, lib))
-        return normalized
+            identity = (
+                normalize_identity(normalized_media.title),
+                normalize_identity(creator) if creator else "",
+            )
+            existing = normalized_by_identity.get(identity)
+            if existing is None or (not existing[0].creator and creator):
+                normalized_by_identity[identity] = (normalized_media, lib)
+        return list(normalized_by_identity.values())
+
+    @classmethod
+    def _creator(cls, row: dict, media: dict) -> str | None:
+        values = (
+            row.get("creator"),
+            row.get("author"),
+            media.get("creator"),
+            media.get("author"),
+            media.get("writer"),
+            media.get("writers"),
+            media.get("authors"),
+            media.get("credits"),
+        )
+        for value in values:
+            creator = cls._creator_value(value)
+            if creator:
+                return creator
+        return None
+
+    @staticmethod
+    def _creator_value(value: object) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate if normalize_identity(candidate) not in {"unknown", "n/a", "n a", "none"} else None
+        if isinstance(value, dict):
+            for key in ("name", "display_name", "creator", "author", "writer", "person"):
+                creator = FloppyProvider._creator_value(value.get(key))
+                if creator:
+                    return creator
+            return None
+        if isinstance(value, list):
+            creators = [FloppyProvider._creator_value(item) for item in value]
+            names = [name for name in creators if name]
+            return ", ".join(names) if names else None
+        return None
 
     @staticmethod
     def _normalize_status(status: object) -> str:

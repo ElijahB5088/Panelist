@@ -281,3 +281,33 @@ def test_floppy_normalization_skips_missing_ids():
     ])
 
     assert normalized == []
+
+
+def test_floppy_normalization_extracts_authors_and_deduplicates_titles():
+    normalized = FloppyProvider().normalize_library([
+        {
+            "media_id": "comic-1",
+            "media_type": "comic",
+            "item": {"title": "Same Title", "authors": [{"name": "Jane Doe"}]},
+        },
+        {
+            "media_id": "comic-2",
+            "media_type": "comic",
+            "item": {"title": " Same  Title ", "creator": "Jane Doe"},
+        },
+    ])
+
+    assert len(normalized) == 1
+    assert normalized[0][0].creator == "Jane Doe"
+
+
+def test_floppy_normalization_ignores_placeholder_authors():
+    normalized = FloppyProvider().normalize_library([
+        {
+            "media_id": "comic-1",
+            "media_type": "comic",
+            "item": {"title": "No Author", "creator": "Unknown"},
+        }
+    ])
+
+    assert normalized[0][0].creator is None

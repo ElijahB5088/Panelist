@@ -17,7 +17,7 @@ def authenticated_client():
     return client
 
 
-def test_recommendations_exclude_read_items_and_enrich_covers(monkeypatch):
+def test_recommendations_exclude_all_library_items(monkeypatch):
     client = authenticated_client()
     user_id = client.get("/api/me").json()["id"]
     read_id = f"{user_id}-read"
@@ -61,7 +61,7 @@ def test_recommendations_exclude_read_items_and_enrich_covers(monkeypatch):
     assert response.status_code == 200
     recommendations = response.json()
     assert read_id not in [item["id"] for item in recommendations]
-    assert candidate_id in [item["id"] for item in recommendations]
+    assert candidate_id not in [item["id"] for item in recommendations]
 
 
 def test_recommendation_feedback_can_be_cleared():
@@ -187,10 +187,6 @@ def test_recommendations_repair_comicvine_manga_from_authoritative_metadata(monk
     main.conn.execute(
         "INSERT INTO media (id, title, creator, genres, rating, source, media_type, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (candidate_id, "Hunter x Hunter", "comic", "action", 5.0, "comicvine", "comic", "https://covers.example/hxh.jpg"),
-    )
-    main.conn.execute(
-        "INSERT INTO user_library (user_id, media_id, status, progress, user_rating) VALUES (?, ?, ?, ?, ?)",
-        (user_id, candidate_id, "planned", 0, None),
     )
     main.conn.commit()
 
