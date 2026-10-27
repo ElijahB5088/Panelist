@@ -96,7 +96,7 @@ fun ProfileScreen(
                 }
                 Text(
                     when (trackerChoice) {
-                        "floppy" -> "Floppy syncs your connected comic library. Enter its server URL and API token."
+                        "floppy" -> "Floppy syncs your connected media library. Enter its server URL and API token."
                         "kitsu" -> "Kitsu imports manga only. Use https://kitsu.io unless you run a compatible Kitsu server."
                         else -> "MyAnimeList imports manga through browser authorization; no token is entered here."
                     },

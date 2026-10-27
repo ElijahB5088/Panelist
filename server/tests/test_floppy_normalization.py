@@ -37,7 +37,7 @@ def test_floppy_fetch_uses_bounded_timeout_without_retries(monkeypatch):
 
     assert len(calls) == 1
     timeout = calls[0][1]
-    assert calls[0][2] == {"limit": 100, "offset": 0}
+    assert calls[0][2] == {"media_type": "comic", "limit": 100, "offset": 0}
     assert timeout.connect == 5.0
     assert timeout.read == 20.0
     assert timeout.write == 10.0
@@ -69,9 +69,11 @@ def test_floppy_fetches_all_pages(monkeypatch):
 
         async def get(self, url, headers, params):
             calls.append(params)
-            if params["offset"] == 0:
+            if params["media_type"] == "comic" and params["offset"] == 0:
                 return FakeResponse({"results": [{"id": str(index)} for index in range(100)]})
-            return FakeResponse({"results": [{"id": "100"}]})
+            if params["media_type"] == "comics":
+                return FakeResponse({"results": [{"id": "100"}]})
+            return FakeResponse({"results": []})
 
     monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
 
@@ -80,7 +82,10 @@ def test_floppy_fetches_all_pages(monkeypatch):
     items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
 
     assert len(items) == 101
-    assert calls == [{"limit": 100, "offset": 0}, {"limit": 100, "offset": 100}]
+    assert calls[:2] == [
+        {"media_type": "comic", "limit": 100, "offset": 0},
+        {"media_type": "comic", "limit": 100, "offset": 100},
+    ]
 
 
 def test_floppy_normalization():
@@ -118,7 +123,7 @@ def test_floppy_envelope_and_statuses():
     assert [library["status"] for _, library in normalized] == ["completed", "planned"]
 
 
-def test_floppy_anime_payload_is_excluded():
+def test_floppy_anime_payload_is_imported():
     provider = FloppyProvider()
 
     normalized = provider.normalize_library([
@@ -131,10 +136,11 @@ def test_floppy_anime_payload_is_excluded():
         }
     ])
 
-    assert normalized == []
+    assert len(normalized) == 1
+    assert normalized[0][0].media_type == "anime"
 
 
-def test_floppy_normalization_excludes_other_media_types():
+def test_floppy_normalization_accepts_floppy_media_types():
     provider = FloppyProvider()
 
     normalized = provider.normalize_library([
@@ -143,7 +149,8 @@ def test_floppy_normalization_excludes_other_media_types():
         {"media_id": "comic", "media_type": "comics", "item": {"title": "Comic"}},
     ])
 
-    assert [media.id for media, _ in normalized] == ["comic"]
+    assert [media.id for media, _ in normalized] == ["movie", "show", "comic"]
+    assert [media.media_type for media, _ in normalized] == ["movie", "tv", "comic"]
 
 
 def test_floppy_normalization_accepts_nested_type_and_data_fields():

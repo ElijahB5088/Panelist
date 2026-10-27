@@ -102,7 +102,7 @@ def test_floppy_sync_ignores_unsupported_media_without_clearing_library(monkeypa
     main.conn.commit()
 
     async def fake_fetch_library(server_url, api_token):
-        return [{"media_id": "anime-1", "media_type": "anime", "item": {"title": "Anime"}}]
+        return [{"media_id": "other-1", "media_type": "other", "item": {"title": "Other"}}]
 
     monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", fake_fetch_library)
 

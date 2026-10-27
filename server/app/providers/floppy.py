@@ -14,7 +14,8 @@ class FloppyProvider(TrackingProvider):
     request_timeout = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
     connection_path = "/api/v1/user/preferences/"
     library_path = "/api/v1/media/"
-    supported_media_types = {"comic", "comics", "manga"}
+    library_media_types = ("comic", "comics", "manga", "movie", "show", "season", "tv", "anime")
+    supported_media_types = set(library_media_types)
 
     async def test_connection(self, server_url: str, api_token: str) -> bool:
         headers = {
@@ -33,34 +34,50 @@ class FloppyProvider(TrackingProvider):
         }
         async with httpx.AsyncClient(timeout=self.request_timeout) as client:
             items: list[dict] = []
-            limit = 100
-            offset = 0
-            while True:
-                resp = await client.get(
-                    f"{server_url.rstrip('/')}{self.library_path}",
-                    headers=headers,
-                    params={"limit": limit, "offset": offset},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                if isinstance(data, list):
-                    page = data
-                elif isinstance(data, dict):
-                    page = next(
-                        (
-                            value
-                            for key in ("results", "items", "data")
-                            for value in (data.get(key),)
-                            if isinstance(value, list)
-                        ),
-                        [],
+            seen: set[tuple[object, ...]] = set()
+            for media_type in self.library_media_types:
+                limit = 100
+                offset = 0
+                while True:
+                    resp = await client.get(
+                        f"{server_url.rstrip('/')}{self.library_path}",
+                        headers=headers,
+                        params={"media_type": media_type, "limit": limit, "offset": offset},
                     )
-                else:
-                    page = []
-                items.extend(item for item in page if isinstance(item, dict))
-                if len(page) < limit:
-                    return items
-                offset += limit
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if isinstance(data, list):
+                        page = data
+                    elif isinstance(data, dict):
+                        page = next(
+                            (
+                                value
+                                for key in ("results", "items", "data")
+                                for value in (data.get(key),)
+                                if isinstance(value, list)
+                            ),
+                            [],
+                        )
+                    else:
+                        page = []
+                    for item in page:
+                        if not isinstance(item, dict):
+                            continue
+                        nested = item.get("item") or item.get("media") or item.get("data") or {}
+                        identity = (
+                            item.get("media_type") or (nested.get("media_type") if isinstance(nested, dict) else None),
+                            item.get("source") or (nested.get("source") if isinstance(nested, dict) else None),
+                            item.get("media_id")
+                            or item.get("id")
+                            or (nested.get("media_id") or nested.get("id") if isinstance(nested, dict) else None),
+                        )
+                        if identity not in seen:
+                            seen.add(identity)
+                            items.append(item)
+                    if len(page) < limit:
+                        break
+                    offset += limit
+            return items
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
         normalized: list[tuple[NormalizedMedia, dict]] = []
@@ -81,6 +98,8 @@ class FloppyProvider(TrackingProvider):
                 continue
             if media_type == "comics":
                 media_type = "comic"
+            elif media_type in {"show", "season"}:
+                media_type = "tv"
             image_url = next(
                 (
                     value
