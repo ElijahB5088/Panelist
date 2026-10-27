@@ -71,7 +71,7 @@ class FloppyProvider(TrackingProvider):
                             or item.get("id")
                             or (nested.get("media_id") or nested.get("id") if isinstance(nested, dict) else None),
                         )
-                        if identity not in seen:
+                        if any(value is None for value in identity) or identity not in seen:
                             seen.add(identity)
                             items.append(item)
                     if len(page) < limit:

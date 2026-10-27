@@ -88,6 +88,44 @@ def test_floppy_fetches_all_pages(monkeypatch):
     ]
 
 
+def test_floppy_fetch_does_not_collapse_rows_without_outer_identity(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"results": [
+                {"item": {"media_type": "comic", "id": "comic-1"}},
+                {"item": {"media_type": "comic", "id": "comic-2"}},
+            ]}
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers, params):
+            if params["media_type"] == "comic":
+                return FakeResponse()
+            return type("EmptyResponse", (), {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {"results": []},
+            })()
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    import asyncio
+
+    items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
+
+    assert len(items) == 2
+
+
 def test_floppy_normalization():
     provider = FloppyProvider()
     payload = [
