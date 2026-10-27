@@ -32,16 +32,35 @@ class FloppyProvider(TrackingProvider):
             "X-API-Key": api_token,
         }
         async with httpx.AsyncClient(timeout=self.request_timeout) as client:
-            resp = await client.get(f"{server_url.rstrip('/')}{self.library_path}", headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, dict):
-            for key in ("results", "items", "data"):
-                value = data.get(key)
-                if isinstance(value, list):
-                    return value
-            return []
-        return data
+            items: list[dict] = []
+            limit = 100
+            offset = 0
+            while True:
+                resp = await client.get(
+                    f"{server_url.rstrip('/')}{self.library_path}",
+                    headers=headers,
+                    params={"limit": limit, "offset": offset},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, list):
+                    page = data
+                elif isinstance(data, dict):
+                    page = next(
+                        (
+                            value
+                            for key in ("results", "items", "data")
+                            for value in (data.get(key),)
+                            if isinstance(value, list)
+                        ),
+                        [],
+                    )
+                else:
+                    page = []
+                items.extend(item for item in page if isinstance(item, dict))
+                if len(page) < limit:
+                    return items
+                offset += limit
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
         normalized: list[tuple[NormalizedMedia, dict]] = []

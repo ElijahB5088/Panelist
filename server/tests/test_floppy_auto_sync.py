@@ -109,6 +109,7 @@ def test_floppy_sync_ignores_unsupported_media_without_clearing_library(monkeypa
     response = client.post("/api/sync")
 
     assert response.status_code == 200
+    assert response.json()["imported"] == 0
     rows = main.conn.execute(
         "SELECT media_id FROM user_library WHERE user_id = ?", (user_id,)
     ).fetchall()

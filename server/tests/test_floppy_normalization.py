@@ -26,8 +26,8 @@ def test_floppy_fetch_uses_bounded_timeout_without_retries(monkeypatch):
         async def __aexit__(self, exc_type, exc, traceback):
             return False
 
-        async def get(self, url, headers):
-            calls.append((url, self.timeout))
+        async def get(self, url, headers, params):
+            calls.append((url, self.timeout, params))
             raise httpx.ReadTimeout("slow response")
 
     monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
@@ -37,10 +37,50 @@ def test_floppy_fetch_uses_bounded_timeout_without_retries(monkeypatch):
 
     assert len(calls) == 1
     timeout = calls[0][1]
+    assert calls[0][2] == {"limit": 100, "offset": 0}
     assert timeout.connect == 5.0
     assert timeout.read == 20.0
     assert timeout.write == 10.0
     assert timeout.pool == 5.0
+
+
+def test_floppy_fetches_all_pages(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers, params):
+            calls.append(params)
+            if params["offset"] == 0:
+                return FakeResponse({"results": [{"id": str(index)} for index in range(100)]})
+            return FakeResponse({"results": [{"id": "100"}]})
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    import asyncio
+
+    items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
+
+    assert len(items) == 101
+    assert calls == [{"limit": 100, "offset": 0}, {"limit": 100, "offset": 100}]
 
 
 def test_floppy_normalization():

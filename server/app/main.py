@@ -472,7 +472,7 @@ def _sync_lock(user_id: int) -> asyncio.Lock:
     return _sync_locks.setdefault(user_id, asyncio.Lock())
 
 
-async def sync_user_library(user_id: int) -> None:
+async def sync_user_library(user_id: int) -> int:
     lock = _sync_lock(user_id)
     if lock.locked():
         raise SyncInProgressError("A sync is already running for this account")
@@ -526,7 +526,7 @@ async def sync_user_library(user_id: int) -> None:
                     (synced_at.isoformat(), next_sync_at, user_id),
                 )
                 conn.commit()
-                return
+                return 0
             conn.execute("BEGIN")
             added_media_ids: list[str] = []
             for media, lib in normalized:
@@ -592,6 +592,7 @@ async def sync_user_library(user_id: int) -> None:
                 (synced_at.isoformat(), next_sync_at, user_id),
             )
             conn.commit()
+            return len(added_media_ids)
         except Exception as exc:
             conn.rollback()
             error_message = str(exc)[:240] or "Unknown sync error"
@@ -930,7 +931,7 @@ def disconnect_kitsu(user=Depends(user_from_auth)):
 @app.post("/api/sync")
 async def sync(user=Depends(user_from_auth)):
     try:
-        await sync_user_library(user["id"])
+        imported_count = await sync_user_library(user["id"])
     except SyncInProgressError as exc:
         raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
@@ -943,7 +944,7 @@ async def sync(user=Depends(user_from_auth)):
         _audit_event(user["id"], "sync.failed", outcome="error")
         raise HTTPException(502, "Tracker sync failed") from exc
     _audit_event(user["id"], "sync.completed")
-    return {"ok": True, "status": "synced"}
+    return {"ok": True, "status": "synced", "imported": imported_count}
 
 
 @app.get("/api/sync/status")
