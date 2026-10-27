@@ -41,8 +41,10 @@ def test_mapping_normalizes_media_type_aliases():
     ("source", "tracker_source"),
     [("anilist", None), ("kitsu", None), ("mal", None), (None, "kitsu"), (None, "mal")],
 )
-def test_mapping_prefers_authoritative_manga_sources(source, tracker_source):
-    assert normalize_media_type("comic", source=source, tracker_source=tracker_source) == "manga"
+def test_mapping_uses_authoritative_source_only_when_type_is_missing(source, tracker_source):
+    assert normalize_media_type(None, source=source, tracker_source=tracker_source) == "manga"
+    assert normalize_media_type("comic", source=source, tracker_source=tracker_source) == "comic"
+    assert normalize_media_type("manhwa", source=source, tracker_source=tracker_source) == "manhwa"
 
 
 def test_mapping_preserves_non_latin_identity_text():

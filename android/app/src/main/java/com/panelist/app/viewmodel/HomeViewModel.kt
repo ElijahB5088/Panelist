@@ -148,11 +148,10 @@ class HomeViewModelFactory(
 
 private fun normalizeMediaType(mediaType: String?, source: String? = null): String? {
 	val normalizedSource = source?.trim()?.lowercase()
-	if (normalizedSource in setOf("anilist", "kitsu", "mal")) return "manga"
 	val normalizedType = when (mediaType?.trim()?.lowercase()) {
 		"comic", "comics" -> "comic"
 		"manga", "manhwa", "manhua" -> mediaType.trim().lowercase()
 		else -> mediaType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 	}
-	return normalizedType
+	return normalizedType ?: if (normalizedSource in setOf("anilist", "kitsu", "mal")) "manga" else null
 }

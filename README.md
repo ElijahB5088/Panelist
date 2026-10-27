@@ -76,6 +76,9 @@ and `MAL_REDIRECT_URI` before browser authorization will work. After a
 successful connection, use **Sync library** and return to **For you** for
 recommendations. Floppy imports only comic-compatible media (`comic`, `manga`,
 `manhwa`, and `manhua`); movies, shows, and anime are never imported.
+The For You media filters are exact-type filters: Comics, Manga, Manhwa, and
+Manhua do not fall back to another category when no matching recommendations
+are available.
 
 If the app cannot connect, first verify `GET /health` from the device's network,
 that the server port is exposed, and that HTTPS certificates are trusted.

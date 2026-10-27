@@ -147,7 +147,22 @@ class HomeViewModelTest {
         assertEquals(listOf("all"), viewModel.uiState.value.visibleRecommendations.map { it.id })
     }
 
-    private fun recommendation(id: String, mediaType: String? = null) = Recommendation(
+    @Test
+    fun explicitSubtypeIsNotCollapsedByTrackerSource() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val repository = FakeRecommendationRepository(
+            recommendations = listOf(recommendation("manhwa", "manhwa", "anilist"))
+        )
+        val viewModel = HomeViewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.setMediaTypeFilter("manhwa")
+        advanceUntilIdle()
+
+        assertEquals(listOf("manhwa"), viewModel.uiState.value.visibleRecommendations.map { it.id })
+    }
+
+    private fun recommendation(id: String, mediaType: String? = null, source: String? = null) = Recommendation(
         id = id,
         title = id,
         creator = null,
@@ -155,6 +170,7 @@ class HomeViewModelTest {
         rating = null,
         description = null,
         why = "Because you may like it",
+        source = source,
         media_type = mediaType
     )
 }

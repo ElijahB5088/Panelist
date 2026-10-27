@@ -126,6 +126,40 @@ def test_floppy_fetch_does_not_collapse_rows_without_outer_identity(monkeypatch)
     assert len(items) == 2
 
 
+def test_floppy_fetch_preserves_category_when_payload_omits_media_type(monkeypatch):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers, params):
+            if url.endswith("/manhua"):
+                return FakeResponse({"results": [{"media_id": "cn-1", "item": {"title": "Chinese Comic"}}]})
+            return FakeResponse({"results": []})
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    payload = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
+    normalized = FloppyProvider().normalize_library(payload)
+
+    assert normalized[0][0].media_type == "manhua"
+
+
 def test_floppy_skips_unsupported_categories(monkeypatch):
     class FakeClient:
         def __init__(self, *, timeout):
@@ -147,7 +181,13 @@ def test_floppy_skips_unsupported_categories(monkeypatch):
 
     items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
 
-    assert items == [{"id": "comic-1"}]
+    assert items == [
+        {
+            "id": "comic-1",
+            "item": {"library_media_type": "comic"},
+            "library_media_type": "comic",
+        }
+    ]
 
 
 def test_floppy_returns_empty_when_every_category_is_unsupported(monkeypatch):

@@ -86,7 +86,13 @@ class FloppyProvider(TrackingProvider):
                     for item in page:
                         if not isinstance(item, dict):
                             continue
+                        item = dict(item)
                         nested = item.get("item") or item.get("media") or item.get("data") or {}
+                        if isinstance(nested, dict):
+                            nested = dict(nested)
+                            nested.setdefault("library_media_type", media_type)
+                            item["item"] = nested
+                        item.setdefault("library_media_type", media_type)
                         identity = (
                             item.get("media_type") or (nested.get("media_type") if isinstance(nested, dict) else None),
                             item.get("source") or (nested.get("source") if isinstance(nested, dict) else None),
