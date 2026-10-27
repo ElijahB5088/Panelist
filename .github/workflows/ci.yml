@@ -47,7 +47,7 @@ jobs:
           java-version: '17'
           cache: gradle
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Run Gradle checks and lint
         working-directory: android
         run: ./gradlew check lint assembleDebug --stacktrace
