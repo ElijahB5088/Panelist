@@ -7,6 +7,8 @@ import com.panelist.app.data.model.FloppySyncSettings
 import com.panelist.app.data.model.KitsuConfig
 import com.panelist.app.data.model.ProfileResponse
 import com.panelist.app.data.model.SyncStatus
+import retrofit2.HttpException
+import org.json.JSONObject
 
 class ProfileRepository(private val api: PanelistApi) {
     suspend fun profile(): ProfileResponse = api.profile()
@@ -17,7 +19,19 @@ class ProfileRepository(private val api: PanelistApi) {
     suspend fun testKitsu(config: KitsuConfig): FloppyConnectionResponse = api.testKitsu(config)
     suspend fun connectKitsu(config: KitsuConfig): Boolean = api.connectKitsu(config).connected
     suspend fun authorizeMAL(): String = api.authorizeMAL().authorization_url
-    suspend fun sync(): Boolean = api.sync().ok
+    suspend fun sync(): Boolean {
+        try {
+            return api.sync().ok
+        } catch (error: HttpException) {
+            val detail = runCatching {
+                JSONObject(error.response()?.errorBody()?.string().orEmpty()).optString("detail")
+            }.getOrNull().orEmpty()
+            if (detail.isNotBlank()) {
+                throw IllegalStateException(detail, error)
+            }
+            throw error
+        }
+    }
     suspend fun syncStatus(): SyncStatus = api.syncStatus()
     suspend fun logout(): Boolean = api.logout().ok
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from html import escape
@@ -29,6 +30,8 @@ from .security import (
     now_iso,
     verify_password,
 )
+
+logger = logging.getLogger("panelist")
 
 conn = get_conn()
 run_migrations(conn)
@@ -938,9 +941,11 @@ async def sync(user=Depends(user_from_auth)):
         _audit_event(user["id"], "sync.failed", outcome="rejected", details={"reason": str(exc)[:120]})
         raise HTTPException(400, str(exc)) from exc
     except FloppyProviderError as exc:
+        logger.warning("Floppy sync failed: %s", str(exc)[:240])
         _audit_event(user["id"], "sync.failed", outcome="error", details={"provider": "floppy"})
         raise HTTPException(502, f"Sync failed: {exc}") from exc
     except Exception as exc:
+        logger.exception("Unexpected tracker sync failure")
         _audit_event(user["id"], "sync.failed", outcome="error")
         raise HTTPException(502, "Tracker sync failed") from exc
     _audit_event(user["id"], "sync.completed")
