@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 data class HomeUiState(
 	val isLoading: Boolean = true,
@@ -147,11 +148,12 @@ class HomeViewModelFactory(
 }
 
 private fun normalizeMediaType(mediaType: String?, source: String? = null): String? {
-	val normalizedSource = source?.trim()?.lowercase()
-	val normalizedType = when (mediaType?.trim()?.lowercase()) {
+	val normalizedSource = source?.trim()?.lowercase(Locale.ROOT)
+	val rawType = mediaType?.trim()?.lowercase(Locale.ROOT)
+	val normalizedType = when (rawType) {
 		"comic", "comics" -> "comic"
-		"manga", "manhwa", "manhua" -> mediaType.trim().lowercase()
-		else -> mediaType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+		"manga", "manhwa", "manhua" -> rawType
+		else -> rawType?.takeIf { it.isNotEmpty() }
 	}
 	return normalizedType ?: if (normalizedSource in setOf("anilist", "kitsu", "mal")) "manga" else null
 }

@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import java.util.Locale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
@@ -111,7 +112,7 @@ private fun MetadataCoverFallback(result: MetadataResult) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            result.title.take(1).uppercase(),
+            result.title.take(1).uppercase(Locale.ROOT),
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             style = MaterialTheme.typography.displayLarge
         )

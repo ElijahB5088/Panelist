@@ -198,12 +198,15 @@ def _associate_authoritative_manga(results: list[MetadataResult]) -> list[Metada
         matches = [
             tracker
             for tracker in tracker_results
-            if _metadata_titles(tracker).intersection(_metadata_titles(result))
+            if normalize_identity(tracker.title) == title
             and (
                 (year and normalize_year(tracker.release_date) == year)
-                or (not year and has_manga_origin(tracker))
+                or (
+                    creator
+                    and normalize_identity(tracker.creator) == creator
+                    and has_manga_origin(tracker)
+                )
             )
-            and (creator and normalize_identity(tracker.creator) == creator or not creator)
         ]
         match = matches[0] if len(matches) == 1 else None
         if match:

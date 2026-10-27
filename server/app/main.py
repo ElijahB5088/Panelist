@@ -280,6 +280,8 @@ async def _recommendation_cover(row):
                 tracker_source=row[10],
             )
             if comparison.accepted:
+                # Do not let a cover-only search alter the identity or
+                # metadata of a record with an existing trusted source.
                 match = candidate
                 break
         if match:
@@ -292,6 +294,9 @@ async def _recommendation_cover(row):
     source_id = row[7] if preserve_source else match.source_id
     source_url = row[9] if preserve_source else match.source_url
     media_type = row[11] or match.media_type or current_type
+    matched_type = _media_type(match.media_type, match.source, row[10], match.title)
+    if current_type and matched_type and matched_type != current_type:
+        return row
     conn.execute(
         """
         UPDATE media
@@ -550,12 +555,24 @@ async def sync_user_library(user_id: int) -> int:
             conn.execute("BEGIN")
             added_media_ids: list[str] = []
             for media, lib in normalized:
+                media_id = media.id
+                source_id = media.source_id
+                existing_media = conn.execute(
+                    "SELECT title, media_type FROM media WHERE id = ?",
+                    (media_id,),
+                ).fetchone()
+                if existing_media and (
+                    normalize_identity(existing_media[0]) != normalize_identity(media.title)
+                    or _media_type(existing_media[1]) != _media_type(media.media_type)
+                ):
+                    media_id = f"{media.source}:{media.media_type}:{media.id}"
+                    source_id = f"{media.media_type}:{media.source_id}"
                 if media.source and media.source_id:
-                    if not _media_source_available(media.id, media.source, media.source_id):
+                    if not _media_source_available(media_id, media.source, source_id):
                         raise ValueError(
-                            f"External media identity {media.source}:{media.source_id} belongs to another media"
+                            f"External media identity {media.source}:{source_id} belongs to another media"
                         )
-                added_media_ids.append(media.id)
+                added_media_ids.append(media_id)
                 conn.execute(
                     """
                     INSERT INTO media (id, title, creator, genres, publisher, description, rating, source, source_id, media_type, image_url, source_url, tracker_source, tracker_media_id, tracker_item_id)
@@ -570,13 +587,13 @@ async def sync_user_library(user_id: int) -> int:
                       tracker_item_id=excluded.tracker_item_id
                     """,
                     (
-                        media.id, media.title, media.creator, ",".join(media.genres), media.publisher,
-                        media.description, media.rating, media.source, media.source_id, media.media_type,
+                        media_id, media.title, media.creator, ",".join(media.genres), media.publisher,
+                        media.description, media.rating, media.source, source_id, media.media_type,
                         media.image_url, media.source_url, lib.get("tracker_source"),
                         lib.get("tracker_media_id"), lib.get("tracker_item_id"),
                     ),
                 )
-                _upsert_media_source(media.id, media.source, media.source_id, media.source_url)
+                _upsert_media_source(media_id, media.source, source_id, media.source_url)
                 conn.execute(
                     """
                     INSERT INTO user_library (user_id, media_id, status, progress, user_rating, progress_max, progress_unit, progress_scope, progress_percent, added_at)
@@ -588,7 +605,7 @@ async def sync_user_library(user_id: int) -> int:
                       added_at=COALESCE(user_library.added_at, excluded.added_at)
                     """,
                     (
-                        user_id, media.id, lib["status"], lib["progress"], lib["user_rating"],
+                        user_id, media_id, lib["status"], lib["progress"], lib["user_rating"],
                         lib.get("progress_max"), lib.get("progress_unit"), lib.get("progress_scope"),
                         lib.get("progress_percent"), synced_at.isoformat(),
                     ),

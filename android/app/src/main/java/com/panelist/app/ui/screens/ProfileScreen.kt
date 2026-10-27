@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import java.util.Locale
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -85,7 +86,7 @@ fun ProfileScreen(
         Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Tracker connection", style = MaterialTheme.typography.headlineSmall)
-                Text(if (connected) "${trackerChoice.replaceFirstChar { it.uppercase() }} connected" else "${trackerChoice.replaceFirstChar { it.uppercase() }} is not connected", color = MaterialTheme.colorScheme.primary)
+                Text(if (connected) "${trackerChoice.replaceFirstChar { it.titlecase(Locale.ROOT) }} connected" else "${trackerChoice.replaceFirstChar { it.titlecase(Locale.ROOT) }} is not connected", color = MaterialTheme.colorScheme.primary)
                 tracker?.last_sync?.let { Text("Last sync: $it", style = MaterialTheme.typography.bodyLarge) }
                 tracker?.sync_error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 syncStatus?.let { Text("Sync status: $it", style = MaterialTheme.typography.labelLarge) }
@@ -135,7 +136,7 @@ fun ProfileScreen(
                         }
                     ) { Text("Refresh connection") }
                 } else {
-                    OutlinedTextField(serverUrl, { serverUrl = it }, modifier = Modifier.fillMaxWidth(), label = { Text("${trackerChoice.replaceFirstChar { it.uppercase() }} server URL") }, singleLine = true)
+                    OutlinedTextField(serverUrl, { serverUrl = it }, modifier = Modifier.fillMaxWidth(), label = { Text("${trackerChoice.replaceFirstChar { it.titlecase(Locale.ROOT) }} server URL") }, singleLine = true)
                     OutlinedTextField(token, { token = it }, modifier = Modifier.fillMaxWidth(), label = { Text("API token") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
                     Button(
                         enabled = repository != null && serverUrl.isNotBlank() && token.isNotBlank() && !busy,
@@ -157,7 +158,7 @@ fun ProfileScreen(
                                     }
                                     if (!testResult.connected) error(testResult.error ?: "Connection test failed")
                                     connected = true
-                                    "${trackerChoice.replaceFirstChar { it.uppercase() }} connected."
+                                    "${trackerChoice.replaceFirstChar { it.titlecase(Locale.ROOT) }} connected."
                                 }.getOrElse { it.message ?: "Connection failed." }
                                 busy = false
                             }

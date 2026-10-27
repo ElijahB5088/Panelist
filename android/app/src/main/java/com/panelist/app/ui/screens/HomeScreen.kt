@@ -61,6 +61,7 @@ import com.panelist.app.viewmodel.HomeViewModel
 import com.panelist.app.viewmodel.HomeViewModelFactory
 import com.panelist.app.ui.rememberReducedMotion
 import kotlin.math.roundToInt
+import java.util.Locale
 
 @Composable
 fun HomeScreen(repository: RecommendationRepository) {
@@ -270,13 +271,15 @@ private fun DeckCard(pick: Recommendation, modifier: Modifier = Modifier, onClic
                 Text(pick.title, style = MaterialTheme.typography.headlineSmall)
                 Text(pick.creator ?: "Creator unknown", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    listOfNotNull(pick.media_type?.replaceFirstChar { it.uppercase() }, pick.release_date?.take(4), pick.genres.joinToString("  / ").takeIf { it.isNotBlank() }).joinToString("  /  "),
+                    listOfNotNull(pick.media_type?.replaceFirstChar { it.titlecase(Locale.ROOT) }, pick.release_date?.take(4), pick.genres.joinToString("  / ").takeIf { it.isNotBlank() }).joinToString("  /  "),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(pick.why, style = MaterialTheme.typography.bodyLarge)
                 pick.source?.let { Text("Source: $it", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                pick.description?.let { Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 2) }
+                pick.description
+                    ?.replace(Regex("<[^>]*>"), "")
+                    ?.let { Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 2) }
             }
         }
     }

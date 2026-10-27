@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import java.util.Locale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -165,7 +166,7 @@ private fun CoverFallback(result: MetadataResult, accent: Color) {
         modifier = Modifier.fillMaxSize().background(accent),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(result.title.take(1).uppercase(), modifier = Modifier.padding(12.dp), color = Color.White, style = MaterialTheme.typography.headlineLarge)
+        Text(result.title.take(1).uppercase(Locale.ROOT), modifier = Modifier.padding(12.dp), color = Color.White, style = MaterialTheme.typography.headlineLarge)
         Text(result.source, modifier = Modifier.padding(8.dp), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge)
     }
 }

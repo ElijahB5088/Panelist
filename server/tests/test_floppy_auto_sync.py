@@ -166,6 +166,63 @@ def test_floppy_sync_rejects_conflicting_source_without_writing_media(monkeypatc
     assert client.get("/api/sync/status").json()["sync_status"] == "error"
 
 
+def test_floppy_sync_scopes_colliding_ids_to_distinct_media_records(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+
+    def fake_normalize_library(payload):
+        return [
+            (
+                NormalizedMedia(
+                    id="42",
+                    title="Nano",
+                    creator="Dark Horse Comics",
+                    genres=["science-fiction"],
+                    description="The comic description.",
+                    source="floppy",
+                    source_id="42",
+                    media_type="comic",
+                    image_url="https://covers.example/nano.jpg",
+                ),
+                {"status": "planned", "progress": 0, "user_rating": None},
+            ),
+            (
+                NormalizedMedia(
+                    id="42",
+                    title="Nano Machine",
+                    creator="Han Jung-Woo",
+                    genres=["action"],
+                    description="The manhwa description.",
+                    source="floppy",
+                    source_id="42",
+                    media_type="manhwa",
+                    image_url="https://covers.example/nano-machine.jpg",
+                ),
+                {"status": "planned", "progress": 0, "user_rating": None},
+            ),
+        ]
+
+    async def fake_fetch_library(server_url, api_token):
+        return []
+
+    monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", fake_fetch_library)
+    monkeypatch.setattr(main.tracking_providers["floppy"], "normalize_library", fake_normalize_library)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 200
+    rows = main.conn.execute(
+        "SELECT id, title, description, media_type, image_url FROM media WHERE id = '42' OR id LIKE 'floppy:%:42' ORDER BY title"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("42", "Nano", "The comic description.", "comic", "https://covers.example/nano.jpg"),
+        ("floppy:manhwa:42", "Nano Machine", "The manhwa description.", "manhwa", "https://covers.example/nano-machine.jpg"),
+    ]
+
+
 def test_floppy_sync_rejects_overlapping_request(monkeypatch):
     client = authenticated_client()
     client.post(

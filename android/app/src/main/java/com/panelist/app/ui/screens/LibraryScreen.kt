@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -82,14 +83,14 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
         loading = false
     }
 
-    val normalizedQuery = query.trim().lowercase()
+    val normalizedQuery = query.trim().lowercase(Locale.ROOT)
     val displayedItems = if (normalizedQuery.isEmpty()) {
         items
     } else {
         items.filter { item ->
             listOfNotNull(item.title, item.creator)
                 .plus(item.genres)
-                .any { value -> value.lowercase().contains(normalizedQuery) }
+                .any { value -> value.lowercase(Locale.ROOT).contains(normalizedQuery) }
         }
     }
 
@@ -113,7 +114,7 @@ fun LibraryScreen(repository: LibraryRepository? = null, onOpenItem: (LibraryIte
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             statuses.forEach { status ->
-                FilterChip(selected = selectedStatus == status, onClick = { selectedStatus = status }, label = { Text(status.replaceFirstChar { it.uppercase() }) })
+                FilterChip(selected = selectedStatus == status, onClick = { selectedStatus = status }, label = { Text(status.replaceFirstChar { it.titlecase(Locale.ROOT) }) })
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -226,7 +227,7 @@ private fun LibraryGridCard(item: LibraryItem, onOpenItem: (LibraryItem) -> Unit
 @Composable
 private fun LibraryCoverFallback(item: LibraryItem) {
     Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-        Text(item.title.take(1).uppercase(), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(item.title.take(1).uppercase(Locale.ROOT), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
