@@ -211,3 +211,22 @@ def test_failed_floppy_auto_sync_is_rescheduled(monkeypatch):
         ).fetchone()[0]
     )
     assert next_sync_at > datetime.now(timezone.utc)
+
+
+def test_floppy_provider_failure_is_reported_without_generic_error(monkeypatch):
+    client = authenticated_client()
+    client.post(
+        "/api/integrations/floppy",
+        json={"server_url": "https://floppy.example", "api_token": "secret-token"},
+    )
+
+    async def failed_fetch(server_url, api_token):
+        raise main.FloppyProviderError("Floppy library request for movie returned HTTP 500")
+
+    monkeypatch.setattr(main.tracking_providers["floppy"], "fetch_library", failed_fetch)
+
+    response = client.post("/api/sync")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Sync failed: Floppy library request for movie returned HTTP 500"
+    assert client.get("/api/sync/status").json()["error"] == "Floppy library request for movie returned HTTP 500"

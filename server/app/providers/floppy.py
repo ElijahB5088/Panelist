@@ -14,8 +14,8 @@ class FloppyProvider(TrackingProvider):
     request_timeout = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
     connection_path = "/api/v1/user/preferences/"
     library_path = "/api/v1/media/"
-    library_media_types = ("comic", "comics", "manga", "movie", "show", "season", "tv", "anime")
-    supported_media_types = set(library_media_types)
+    library_media_types = ("movie", "show", "season", "anime")
+    supported_media_types = set(library_media_types) | {"comic", "comics", "manga", "tv"}
 
     async def test_connection(self, server_url: str, api_token: str) -> bool:
         headers = {
@@ -35,17 +35,39 @@ class FloppyProvider(TrackingProvider):
         async with httpx.AsyncClient(timeout=self.request_timeout) as client:
             items: list[dict] = []
             seen: set[tuple[object, ...]] = set()
+            successful_categories = 0
+            skipped_categories = 0
             for media_type in self.library_media_types:
                 limit = 100
                 offset = 0
                 while True:
-                    resp = await client.get(
-                        f"{server_url.rstrip('/')}{self.library_path}",
-                        headers=headers,
-                        params={"media_type": media_type, "limit": limit, "offset": offset},
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
+                    try:
+                        resp = await client.get(
+                            f"{server_url.rstrip('/')}{self.library_path}",
+                            headers=headers,
+                            params={"media_type": media_type, "limit": limit, "offset": offset},
+                        )
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code in {404, 405, 422}:
+                            skipped_categories += 1
+                            break
+                        raise FloppyProviderError(
+                            f"Floppy library request for {media_type} returned HTTP "
+                            f"{exc.response.status_code}"
+                        ) from exc
+                    except httpx.HTTPError as exc:
+                        raise FloppyProviderError(
+                            f"Could not reach Floppy while loading {media_type}: "
+                            f"{type(exc).__name__}"
+                        ) from exc
+                    try:
+                        data = resp.json()
+                    except ValueError as exc:
+                        raise FloppyProviderError(
+                            f"Floppy returned invalid JSON for {media_type}"
+                        ) from exc
+                    successful_categories += 1
                     if isinstance(data, list):
                         page = data
                     elif isinstance(data, dict):
@@ -77,6 +99,10 @@ class FloppyProvider(TrackingProvider):
                     if len(page) < limit:
                         break
                     offset += limit
+            if not successful_categories and skipped_categories:
+                raise FloppyProviderError(
+                    "Floppy did not support the library media endpoint or its media categories"
+                )
             return items
 
     def normalize_library(self, payload: list[dict]) -> list[tuple[NormalizedMedia, dict]]:
@@ -96,10 +122,8 @@ class FloppyProvider(TrackingProvider):
             ).strip().lower()
             if media_type not in self.supported_media_types:
                 continue
-            if media_type == "comics":
+            if media_type in {"comic", "comics"}:
                 media_type = "comic"
-            elif media_type in {"show", "season"}:
-                media_type = "tv"
             image_url = next(
                 (
                     value

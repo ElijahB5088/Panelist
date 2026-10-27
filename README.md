@@ -74,8 +74,8 @@ Kitsu, or MyAnimeList. Floppy and Kitsu require a server URL and API token.
 MyAnimeList requires the server administrator to configure `MAL_CLIENT_ID`
 and `MAL_REDIRECT_URI` before browser authorization will work. After a
 successful connection, use **Sync library** and return to **For you** for
-recommendations. Floppy imports all media categories and pages of the library,
-not just the first category or page returned by the server.
+recommendations. Floppy imports its movie, show, season, and anime categories
+with pagination, rather than relying on one default category or page.
 
 If the app cannot connect, first verify `GET /health` from the device's network,
 that the server port is exposed, and that HTTPS certificates are trusted.

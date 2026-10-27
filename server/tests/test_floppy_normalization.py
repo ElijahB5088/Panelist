@@ -32,12 +32,12 @@ def test_floppy_fetch_uses_bounded_timeout_without_retries(monkeypatch):
 
     monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
 
-    with pytest.raises(httpx.ReadTimeout):
+    with pytest.raises(Exception, match="Could not reach Floppy"):
         asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
 
     assert len(calls) == 1
     timeout = calls[0][1]
-    assert calls[0][2] == {"media_type": "comic", "limit": 100, "offset": 0}
+    assert calls[0][2] == {"media_type": "movie", "limit": 100, "offset": 0}
     assert timeout.connect == 5.0
     assert timeout.read == 20.0
     assert timeout.write == 10.0
@@ -69,9 +69,9 @@ def test_floppy_fetches_all_pages(monkeypatch):
 
         async def get(self, url, headers, params):
             calls.append(params)
-            if params["media_type"] == "comic" and params["offset"] == 0:
+            if params["media_type"] == "movie" and params["offset"] == 0:
                 return FakeResponse({"results": [{"id": str(index)} for index in range(100)]})
-            if params["media_type"] == "comics":
+            if params["media_type"] == "show":
                 return FakeResponse({"results": [{"id": "100"}]})
             return FakeResponse({"results": []})
 
@@ -83,8 +83,8 @@ def test_floppy_fetches_all_pages(monkeypatch):
 
     assert len(items) == 101
     assert calls[:2] == [
-        {"media_type": "comic", "limit": 100, "offset": 0},
-        {"media_type": "comic", "limit": 100, "offset": 100},
+        {"media_type": "movie", "limit": 100, "offset": 0},
+        {"media_type": "movie", "limit": 100, "offset": 100},
     ]
 
 
@@ -95,8 +95,8 @@ def test_floppy_fetch_does_not_collapse_rows_without_outer_identity(monkeypatch)
 
         def json(self):
             return {"results": [
-                {"item": {"media_type": "comic", "id": "comic-1"}},
-                {"item": {"media_type": "comic", "id": "comic-2"}},
+                {"item": {"media_type": "movie", "id": "movie-1"}},
+                {"item": {"media_type": "movie", "id": "movie-2"}},
             ]}
 
     class FakeClient:
@@ -110,7 +110,7 @@ def test_floppy_fetch_does_not_collapse_rows_without_outer_identity(monkeypatch)
             return False
 
         async def get(self, url, headers, params):
-            if params["media_type"] == "comic":
+            if params["media_type"] == "movie":
                 return FakeResponse()
             return type("EmptyResponse", (), {
                 "raise_for_status": lambda self: None,
@@ -124,6 +124,51 @@ def test_floppy_fetch_does_not_collapse_rows_without_outer_identity(monkeypatch)
     items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
 
     assert len(items) == 2
+
+
+def test_floppy_skips_unsupported_categories(monkeypatch):
+    class FakeClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers, params):
+            request = httpx.Request("GET", url)
+            if params["media_type"] == "movie":
+                return httpx.Response(200, json={"results": [{"id": "movie-1"}]}, request=request)
+            return httpx.Response(404, json={"detail": "unsupported"}, request=request)
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    items = asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
+
+    assert items == [{"id": "movie-1"}]
+
+
+def test_floppy_fails_when_every_category_is_unsupported(monkeypatch):
+    class FakeClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url, headers, params):
+            request = httpx.Request("GET", url)
+            return httpx.Response(404, request=request)
+
+    monkeypatch.setattr("app.providers.floppy.httpx.AsyncClient", FakeClient)
+
+    with pytest.raises(Exception, match="did not support"):
+        asyncio.run(FloppyProvider().fetch_library("https://floppy.example", "token"))
 
 
 def test_floppy_normalization():
