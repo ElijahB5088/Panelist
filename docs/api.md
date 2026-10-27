@@ -21,6 +21,7 @@ Implemented endpoints:
 - `GET /api/metadata/search?q=...&limit=10`
 - `GET /api/featured?surface=discover|home&limit=10`
 - `GET /api/library?status=reading&sort=title_asc`
+- `GET /api/library/identity-audit`
 - `GET /api/history`
 - `GET /api/ratings`
 - `POST /api/integrations/floppy`
@@ -82,6 +83,9 @@ passwords, access tokens, request bodies, or sensitive headers. When
 `progress_desc`, `progress_asc`, and `added_desc`. Missing ratings or progress
 values are placed after populated values. `added_desc` orders by when Panelist
 first observed the item in the user's library.
+`GET /api/library/identity-audit` is a read-only dry-run report for likely
+same-title conflicts, conflicting media types or creators, and external
+identity collisions. It does not merge, delete, or rewrite records.
 
 MAL integration uses server-managed OAuth with plain PKCE. Set `MAL_CLIENT_ID`,
 `MAL_CLIENT_SECRET` when provided by MyAnimeList, and register `MAL_REDIRECT_URI`.

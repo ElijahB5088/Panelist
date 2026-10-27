@@ -17,6 +17,29 @@ def authenticated_client():
     return client
 
 
+def test_library_identity_audit_is_dry_run_and_reports_conflicting_same_titles():
+    client = authenticated_client()
+    user_id = client.get("/api/me").json()["id"]
+    main.conn.executemany(
+        "INSERT INTO media (id, title, creator, media_type, source) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("audit-comic", "Common Title", "Western Creator", "comic", "comicvine"),
+            ("audit-manhwa", "Common Title", "Korean Creator", "manhwa", "floppy"),
+        ],
+    )
+    main.conn.executemany(
+        "INSERT INTO user_library (user_id, media_id, status) VALUES (?, ?, ?)",
+        [(user_id, "audit-comic", "planned"), (user_id, "audit-manhwa", "planned")],
+    )
+    main.conn.commit()
+
+    response = client.get("/api/library/identity-audit")
+
+    assert response.status_code == 200
+    assert response.json()["dry_run"] is True
+    assert response.json()["findings"][0]["kind"] == "same_title_conflicting_identity"
+
+
 def test_recommendations_exclude_all_library_items(monkeypatch):
     client = authenticated_client()
     user_id = client.get("/api/me").json()["id"]

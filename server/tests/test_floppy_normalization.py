@@ -275,6 +275,30 @@ def test_floppy_normalization_accepts_only_comic_media_types():
     assert [media.media_type for media, _ in normalized] == ["comic", "manhwa"]
 
 
+def test_floppy_endpoint_category_rejects_contradictory_payload_type():
+    provider = FloppyProvider()
+
+    normalized = provider.normalize_library(
+        [
+            {
+                "media_id": "wrong-category",
+                "library_media_type": "comic",
+                "media_type": "manga",
+                "item": {"title": "Contradictory"},
+            },
+            {
+                "media_id": "matching-category",
+                "library_media_type": "manhua",
+                "media_type": "manhua",
+                "item": {"title": "Matching"},
+            },
+        ]
+    )
+
+    assert [media.id for media, _ in normalized] == ["matching-category"]
+    assert normalized[0][0].media_type == "manhua"
+
+
 def test_floppy_normalization_accepts_nested_type_and_data_fields():
     provider = FloppyProvider()
 

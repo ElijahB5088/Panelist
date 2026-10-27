@@ -1059,6 +1059,73 @@ def history(user=Depends(user_from_auth)):
     return library(user)
 
 
+@app.get("/api/library/identity-audit")
+def library_identity_audit(user=Depends(user_from_auth)):
+    rows = conn.execute(
+        """
+        SELECT m.id, m.title, m.creator, m.media_type, m.source, m.source_id,
+               m.description, m.image_url
+        FROM user_library ul
+        JOIN media m ON m.id = ul.media_id
+        WHERE ul.user_id = ?
+        ORDER BY m.title COLLATE NOCASE, m.id
+        """,
+        (user["id"],),
+    ).fetchall()
+    findings = []
+    by_title: dict[str, list[tuple]] = {}
+    for row in rows:
+        by_title.setdefault(normalize_identity(row[1]), []).append(row)
+    for title, matches in by_title.items():
+        if not title or len(matches) < 2:
+            continue
+        types = {_media_type(row[3], row[4], row[5], row[1]) for row in matches}
+        creators = {normalize_identity(row[2]) for row in matches if row[2]}
+        if len(types) > 1 or len(creators) > 1:
+            findings.append(
+                {
+                    "kind": "same_title_conflicting_identity",
+                    "title": matches[0][1],
+                    "media": [
+                        {
+                            "id": row[0],
+                            "title": row[1],
+                            "creator": row[2],
+                            "media_type": _media_type(row[3], row[4], row[5], row[1]),
+                            "source": row[4],
+                            "source_id": row[5],
+                            "has_description": bool(row[6]),
+                            "has_cover": bool(row[7]),
+                        }
+                        for row in matches
+                    ],
+                    "confidence": "review",
+                }
+            )
+    collisions = conn.execute(
+        """
+        SELECT ms.source, ms.source_id, COUNT(DISTINCT ms.media_id)
+        FROM media_sources ms
+        JOIN user_library ul ON ul.media_id = ms.media_id
+        WHERE ul.user_id = ?
+        GROUP BY ms.source, ms.source_id
+        HAVING COUNT(DISTINCT ms.media_id) > 1
+        """,
+        (user["id"],),
+    ).fetchall()
+    for source, source_id, count in collisions:
+        findings.append(
+            {
+                "kind": "external_identity_collision",
+                "source": source,
+                "source_id": source_id,
+                "media_count": count,
+                "confidence": "review",
+            }
+        )
+    return {"dry_run": True, "findings": findings}
+
+
 @app.get("/api/ratings")
 def ratings(user=Depends(user_from_auth)):
     rows = conn.execute(

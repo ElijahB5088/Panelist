@@ -114,6 +114,19 @@ class FloppyProvider(TrackingProvider):
             media = row.get("item") or row.get("media") or row.get("data") or {}
             if not isinstance(media, dict):
                 media = {}
+            endpoint_type = str(row.get("library_media_type") or "").strip().lower()
+            payload_type = str(
+                row.get("media_type")
+                or row.get("type")
+                or media.get("media_type")
+                or media.get("type")
+                or ""
+            ).strip().lower()
+            if endpoint_type and payload_type:
+                normalized_endpoint_type = "comic" if endpoint_type == "comics" else endpoint_type
+                normalized_payload_type = "comic" if payload_type == "comics" else payload_type
+                if normalized_endpoint_type != normalized_payload_type:
+                    continue
             media_type = str(
                 row.get("library_media_type")
                 or media.get("library_media_type")
